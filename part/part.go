@@ -9,7 +9,7 @@ type (
 		Alive     bool
 		CreatedAt time.Time
 		RowCount  int64
-		// GranulePrimaryKeyVals is the ordered set of primary keys at the start of each granule
+		// GranulePrimaryKeyVals is the ordered set of primary keys at the start of each granule. The primary key index.
 		GranulePrimaryKeyVals [][]string
 	}
 

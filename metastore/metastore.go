@@ -2,22 +2,23 @@ package metastore
 
 import (
 	"context"
-	"github.com/danthegoodman1/GoAPITemplate/gologger"
+	"errors"
 	"github.com/danthegoodman1/icedb/part"
 	"time"
 )
 
 var (
-	logger = gologger.NewLogger()
+	ErrTableNotFound = errors.New("table not found")
 )
 
 type (
 	MetaStore interface {
 		// GetTableSchema fetches the table schema for a given table
-		GetTableSchema(ctx context.Context) (TableSchema, error)
+		GetTableSchema(ctx context.Context, table string) (TableSchema, error)
 
-		// ListParts lists all parts for a table
+		// ListParts lists all parts for a table, only returns `Alive` parts
 		ListParts(ctx context.Context, table string) ([]part.Part, error)
+		// ListPartsInPartitions lists all parts for a given set of partitions, only returns `Alive` parts
 		ListPartsInPartitions(ctx context.Context, table string, partitions []string) ([]part.Part, error)
 
 		CreateTableSchema(
@@ -32,6 +33,9 @@ type (
 		CreatePart(ctx context.Context, table string, p part.Part, colMarks []part.ColumnMark) error
 
 		Shutdown(ctx context.Context) error
+
+		// TableKey formats the name of the table to a key
+		TableKey(tableName string) string
 	}
 
 	TableSchema struct {
