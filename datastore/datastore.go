@@ -1,6 +1,9 @@
 package datastore
 
-import "github.com/danthegoodman1/GoAPITemplate/gologger"
+import (
+	"context"
+	"github.com/danthegoodman1/GoAPITemplate/gologger"
+)
 
 var (
 	logger = gologger.NewLogger()
@@ -11,11 +14,13 @@ type (
 
 	DataStore interface {
 		// GetColumnFile creates a reader for an entire column file
-		GetColumnFile(table, partID, column string) (temp, error)
+		GetColumnFile(ctx context.Context, table, partID, column string) (temp, error)
 		// GetColumnFileWithOffsets creates a reader for a column file with byte offsets
-		GetColumnFileWithOffsets(table, partID, column string) (temp, error)
+		GetColumnFileWithOffsets(ctx context.Context, table, partID, column string, start, end int64) (temp, error)
 
 		// WriteColumnFile creates a writer for a column file
-		WriteColumnFile(table, partID string, t temp) error
+		WriteColumnFile(ctx context.Context, table, partID string, t temp) error
+
+		Shutdown(ctx context.Context) error
 	}
 )

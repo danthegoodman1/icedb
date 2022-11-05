@@ -1,6 +1,7 @@
 package metastore
 
 import (
+	"context"
 	"github.com/danthegoodman1/GoAPITemplate/gologger"
 	"github.com/danthegoodman1/icedb/part"
 	"time"
@@ -13,23 +14,24 @@ var (
 type (
 	MetaStore interface {
 		// GetTableSchema fetches the table schema for a given table
-		GetTableSchema() (TableSchema, error)
+		GetTableSchema(ctx context.Context) (TableSchema, error)
 
 		// ListParts lists all parts for a table
-		ListParts(table string) ([]part.Part, error)
-		ListPartsInPartitions(table string, partIDs []string) ([]part.Part, error)
+		ListParts(ctx context.Context, table string) ([]part.Part, error)
+		ListPartsInPartitions(ctx context.Context, table string, partitions []string) ([]part.Part, error)
 
-		// WritePart writes the part index and marks for each column contained in the part
-		WritePart(table string, p part.Part) error
 		CreateTableSchema(
+			ctx context.Context,
 			tableName string,
 			partKeyColNames,
 			partKeyColTypes,
 			orderingKeyColNames,
 			orderingKeyColTypes []string,
 		) error
-		// InsertPart creates a new part index and mark files
-		CreatePart(table string, p part.Part, colMarks []part.ColumnMark) error
+		// CreatePart creates a new part index and mark files
+		CreatePart(ctx context.Context, table string, p part.Part, colMarks []part.ColumnMark) error
+
+		Shutdown(ctx context.Context) error
 	}
 
 	TableSchema struct {
