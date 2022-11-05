@@ -29,8 +29,7 @@ type (
 		CreateTableSchema(
 			ctx context.Context,
 			tableName string,
-			partKeyColNames,
-			partKeyColTypes,
+			partKeyOps []part.PartKeyOp,
 			orderingKeyColNames,
 			orderingKeyColTypes []string,
 		) error
@@ -47,8 +46,7 @@ type (
 		ID   string
 		Name string
 
-		PartitionKeyColNames []string
-		PartitionKeyColTypes []string
+		PartKeyOps []part.PartKeyOp
 
 		OrderingKeyColNames []string
 		OrderingKeyColTypes []string

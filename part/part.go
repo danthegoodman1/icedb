@@ -27,4 +27,11 @@ type (
 		// in the part contain this column.
 		RowStart int64
 	}
+
+	// PartKeyOp is an operation on a column for a partition key
+	PartKeyOp struct {
+		ColNames   string
+		PreOpType  string
+		PostOpType string
+	}
 )
