@@ -31,6 +31,7 @@ type (
 			tableName string,
 			partKeyOps,
 			orderingKeyOps []part.KeyOp,
+			granularity uint64,
 		) error
 		// CreatePart creates a new part index and mark files
 		CreatePart(ctx context.Context, table string, p part.Part, colMarks []part.ColumnMark) error
@@ -45,8 +46,10 @@ type (
 		ID   string
 		Name string
 
-		PartKeyOps []part.KeyOp
+		// The max number of rows in a granule
+		Granularity uint64
 
+		PartKeyOps     []part.KeyOp
 		OrderingKeyOps []part.KeyOp
 
 		CreatedAt time.Time

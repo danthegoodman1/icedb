@@ -72,6 +72,7 @@ func (rms *RedisMetaStore) CreateTableSchema(
 	tableName string,
 	partKeyOps,
 	orderingKeyOps []part.KeyOp,
+	granularity uint64,
 ) error {
 	logger := zerolog.Ctx(ctx)
 	logger.Debug().Msg("creating table schema")
@@ -83,6 +84,7 @@ func (rms *RedisMetaStore) CreateTableSchema(
 		OrderingKeyOps: orderingKeyOps,
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
+		Granularity:    granularity,
 	}
 
 	jsonBytes, err := json.Marshal(ts)
