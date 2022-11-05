@@ -146,6 +146,38 @@ func (rms *RedisMetaStore) ListParts(ctx context.Context, table string, filters 
 	return parts, nil
 }
 
+func (rms *RedisMetaStore) CreatePart(ctx context.Context, table string, p part.Part, colMarks []part.ColumnMark) error {
+	pipe := rms.client.TxPipeline()
+
+	partJSON, err := json.Marshal(p)
+	if err != nil {
+		return fmt.Errorf("error json.Marshal(part): %w", err)
+	}
+
+	// Insert part
+	pipe.HSet(ctx, rms.TableKey(table)+"_parts", p.ID, string(partJSON))
+
+	// Build a single HSet of all column marks
+	colMarksHash := make([]any, len(colMarks))
+	for _, colMark := range colMarks {
+		jsonBytes, err := json.Marshal(colMark)
+		if err != nil {
+			return fmt.Errorf("error in json.Marshal(colMark): %w", err)
+		}
+		colMarksHash = append(colMarksHash, colMark.ColumnName, string(jsonBytes))
+	}
+
+	// Insert column marks
+	pipe.HSet(ctx, rms.TableKey(table)+"_part_"+p.ID, colMarksHash...)
+
+	_, err = pipe.Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("error in redis pipeline exec: %w", err)
+	}
+
+	return nil
+}
+
 func (rms *RedisMetaStore) Shutdown(_ context.Context) error {
 	err := rms.client.Close()
 	if err != nil {
