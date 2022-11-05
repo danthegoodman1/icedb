@@ -3,7 +3,6 @@ package metastore
 import (
 	"github.com/danthegoodman1/GoAPITemplate/gologger"
 	"github.com/danthegoodman1/icedb/part"
-	"github.com/danthegoodman1/icedb/table"
 )
 
 var (
@@ -13,7 +12,7 @@ var (
 type (
 	MetaStore interface {
 		// GetTableSchema fetches the table schema for a given table
-		GetTableSchema() (table.TableSchema, error)
+		GetTableSchema() (TableSchema, error)
 
 		// ListParts lists all parts for a table
 		ListParts(table string) ([]part.Part, error)
@@ -23,5 +22,16 @@ type (
 
 		// WritePart writes the part index and marks for each column contained in the part
 		WritePart(table string, p part.Part) error
+	}
+
+	TableSchema struct {
+		ID   string
+		Name string
+
+		PartitionKeyColNames []string
+		PartitionKeyColTypes []string
+
+		OrderingKeyColNames []string
+		OrderingKeyColTypes []string
 	}
 )

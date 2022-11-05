@@ -10,8 +10,8 @@ type (
 	}
 
 	Granule struct {
-		ID             string
-		PrimaryKeyVals []any
+		ID               string
+		PartitionKeyVals []any
 	}
 
 	ColumnMark struct {
