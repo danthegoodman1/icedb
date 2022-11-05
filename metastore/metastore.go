@@ -9,6 +9,13 @@ import (
 
 var (
 	ErrTableNotFound = errors.New("table not found")
+
+	LT    FilterOperator = "lt"
+	LTE   FilterOperator = "lte"
+	GT    FilterOperator = "gt"
+	GTE   FilterOperator = "gte"
+	IN    FilterOperator = "in"
+	NOTIN FilterOperator = "notin"
 )
 
 type (
@@ -17,9 +24,7 @@ type (
 		GetTableSchema(ctx context.Context, table string) (TableSchema, error)
 
 		// ListParts lists all parts for a table, only returns `Alive` parts
-		ListParts(ctx context.Context, table string) ([]part.Part, error)
-		// ListPartsInPartitions lists all parts for a given set of partitions, only returns `Alive` parts
-		ListPartsInPartitions(ctx context.Context, table string, partitions []string) ([]part.Part, error)
+		ListParts(ctx context.Context, table string, filters ...FilterOption) ([]part.Part, error)
 
 		CreateTableSchema(
 			ctx context.Context,
@@ -51,4 +56,18 @@ type (
 		CreatedAt time.Time
 		UpdatedAt time.Time
 	}
+
+	FilterOperator string
+
+	FilterOption struct {
+		Operator FilterOperator
+		Val      any
+	}
 )
+
+func WithFilterOption(operator FilterOperator, val any) FilterOption {
+	return FilterOption{
+		Operator: operator,
+		Val:      val,
+	}
+}

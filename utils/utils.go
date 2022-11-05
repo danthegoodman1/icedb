@@ -87,3 +87,13 @@ func VersionToInt(v string) (int64, error) {
 	}
 	return iParts[0]*10_000*10_000 + iParts[1]*10_000 + iParts[2], nil
 }
+
+func ContainsString(s []string, str string) bool {
+	for _, v := range s {
+		if v == str {
+			return true
+		}
+	}
+
+	return false
+}

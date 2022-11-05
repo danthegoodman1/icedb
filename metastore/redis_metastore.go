@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/danthegoodman1/GoAPITemplate/utils"
 	"github.com/danthegoodman1/icedb/part"
+	"github.com/danthegoodman1/icedb/utils"
 	"github.com/go-redis/redis/v8"
 	"github.com/rs/zerolog"
 	"os"
@@ -102,22 +102,45 @@ func (rms *RedisMetaStore) CreateTableSchema(
 	return nil
 }
 
-func (rms *RedisMetaStore) ListParts(ctx context.Context, table string) ([]part.Part, error) {
+func (rms *RedisMetaStore) ListParts(ctx context.Context, table string, filters ...FilterOption) ([]part.Part, error) {
 	logger := zerolog.Ctx(ctx)
-	logger.Debug().Msg("listing parts")
-	rawParts, err := rms.client.HGetAll(ctx, rms.TableKey(table)+"_parts").Result()
-	if err != nil {
-		return nil, fmt.Errorf("error in redis HGETALL: %w", err)
-	}
+	logger.Debug().Msgf("listing parts with filter options %+v", filters)
 
-	parts := make([]part.Part, len(rawParts))
-	for partID, rawJSON := range rawParts {
-		part := part.Part{}
-		err = json.Unmarshal([]byte(rawJSON), &part)
+	var cursorPos uint64 = 0
+	var returnedCursor uint64 = 1
+	parts := make([]part.Part, 0)
+
+	// Loop until we have all the results
+	for returnedCursor != 0 {
+		logger.Debug().Msgf("running redis HSCAN with cursor %d", cursorPos)
+		rawParts, newCursor, err := rms.client.HScan(ctx, rms.TableKey(table)+"_parts", cursorPos, "", 0).Result()
 		if err != nil {
-			return nil, fmt.Errorf("error unmarshalling part ID '%s' under table '%s': %w", partID, table, err)
+			return nil, fmt.Errorf("error in redis HGETALL: %w", err)
 		}
-		parts = append(parts, part)
+
+	AllParts:
+		for partID, rawJSON := range rawParts {
+			part := part.Part{}
+			err = json.Unmarshal([]byte(rawJSON), &part)
+			if err != nil {
+				return nil, fmt.Errorf("error unmarshalling part ID '%s' under table '%s': %w", partID, table, err)
+			}
+			if !part.Alive {
+				continue
+			}
+
+			// Verify against filter options
+			for _, filter := range filters {
+				if !rms.PassFilterOption(part.ID, filter) {
+					// If any fail, we skip this part
+					continue AllParts
+				}
+			}
+			parts = append(parts, part)
+		}
+
+		returnedCursor = newCursor
+		cursorPos = newCursor
 	}
 
 	return parts, nil
@@ -129,4 +152,21 @@ func (rms *RedisMetaStore) Shutdown(_ context.Context) error {
 		return fmt.Errorf("error closing redis client: %w", err)
 	}
 	return nil
+}
+
+func (rms *RedisMetaStore) PassFilterOption(val string, filter FilterOption) bool {
+	switch filter.Operator {
+	case GT:
+		return val > filter.Val.(string)
+	case GTE:
+		return val >= filter.Val.(string)
+	case IN:
+		return utils.ContainsString(filter.Val.([]string), val)
+	case LT:
+		return val < filter.Val.(string)
+	case LTE:
+		return val <= filter.Val.(string)
+	default:
+		return false
+	}
 }
