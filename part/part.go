@@ -28,9 +28,9 @@ type (
 		RowStart int64
 	}
 
-	// PartKeyOp is an operation on a column for a partition key
-	PartKeyOp struct {
-		ColNames   string
+	// KeyOp is an operation on a column for a partition or ordering key column
+	KeyOp struct {
+		ColName    string
 		PreOpType  string
 		PostOpType string
 	}

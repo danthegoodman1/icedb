@@ -70,21 +70,19 @@ func (rms *RedisMetaStore) GetTableSchema(ctx context.Context, table string) (Ta
 func (rms *RedisMetaStore) CreateTableSchema(
 	ctx context.Context,
 	tableName string,
-	partKeyOps []part.PartKeyOp,
-	orderingKeyColNames,
-	orderingKeyColTypes []string,
+	partKeyOps,
+	orderingKeyOps []part.KeyOp,
 ) error {
 	logger := zerolog.Ctx(ctx)
 	logger.Debug().Msg("creating table schema")
 	tableID := utils.GenRandomShortID()
 	ts := TableSchema{
-		ID:                  tableID,
-		Name:                tableName,
-		PartKeyOps:          partKeyOps,
-		OrderingKeyColNames: orderingKeyColNames,
-		OrderingKeyColTypes: orderingKeyColTypes,
-		CreatedAt:           time.Now(),
-		UpdatedAt:           time.Now(),
+		ID:             tableID,
+		Name:           tableName,
+		PartKeyOps:     partKeyOps,
+		OrderingKeyOps: orderingKeyOps,
+		CreatedAt:      time.Now(),
+		UpdatedAt:      time.Now(),
 	}
 
 	jsonBytes, err := json.Marshal(ts)
