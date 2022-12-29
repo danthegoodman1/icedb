@@ -20,6 +20,7 @@ require (
 )
 
 require (
+	github.com/danthegoodman1/gojsonutils v0.0.0-20221229160136-afc41a8fe4a2 // indirect
 	github.com/go-gorp/gorp/v3 v3.0.2 // indirect
 	github.com/go-playground/locales v0.14.0 // indirect
 	github.com/go-playground/universal-translator v0.18.0 // indirect

@@ -24,7 +24,7 @@ func ConnectToDB() error {
 		return err
 	}
 
-	config.MaxConns = 10
+	config.MaxConns = 5
 	config.MinConns = 1
 	config.HealthCheckPeriod = time.Second * 5
 	config.MaxConnLifetime = time.Minute * 30
