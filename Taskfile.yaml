@@ -1,0 +1,59 @@
+version: '3'
+
+dotenv: ['.env']
+
+vars:
+  sql_migrate_version: v1.2.0
+  sql_c_version: v1.16.0
+
+env:
+  DOCKER_BUILDKIT: "1"
+
+tasks:
+
+  install-deps:
+    cmds:
+    - go install github.com/rubenv/sql-migrate/...@{{.sql_migrate_version}}
+    - go install github.com/kyleconroy/sqlc/cmd/sqlc@{{.sql_c_version}}
+
+  sql-up:
+    preconditions:
+      - msg: set env CRDB_DSN and SQL_ENV to local,staging,prod,development
+        sh: echo $SQL_ENV | grep .
+    cmds:
+    - sql-migrate up --env=$SQL_ENV
+    - task: sql-status
+
+  sql-down:
+    preconditions:
+      - msg: set env CRDB_DSN and SQL_ENV to local,staging,prod,development
+        sh: echo $SQL_ENV | grep .
+    cmds:
+    - sql-migrate down --env=$SQL_ENV
+    - task: sql-status
+
+  sql-status:
+    preconditions:
+      - msg: set env CRDB_DSN and SQL_ENV to local,staging,prod,development
+        sh: echo $SQL_ENV | grep .
+    cmds:
+    - sql-migrate status --env=$SQL_ENV
+
+  sql-gen:
+    desc: generate typed methods for SQL execution
+    silent: true
+    cmds:
+      # concatenates all migrations but drops the "migrate down" parts
+      - ls migrations/*.sql migrations/*.sql.later | xargs -n1 sed '/^-- +migrate Down/ ,$d' > schema.sql
+      # There are a bunch of SQL features that don't matter for SQLC but break their parser
+      - sed -i -e 's/ON UPDATE NOW[(][)]//g' schema.sql
+      - sed -i -e 's/CREATE DATABASE.*//g' schema.sql
+      - sed -i -e 's/CREATE INDEX.*//g' schema.sql
+      - sed -i -e 's/CREATE USER.*//g' schema.sql
+      - sed -i -e 's/GRANT.*//g' schema.sql
+      - sed -i -e 's/DESC//g' schema.sql
+      - sed -i -e 's/USING HASH.*//g' schema.sql
+      - rm -f query/*.sql.go
+      - sqlc generate
+      - rm schema.sql*
+      - echo done

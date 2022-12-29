@@ -33,8 +33,16 @@ func init() {
 }
 
 func NewLogger() zerolog.Logger {
-	zerolog.TimeFieldFormat = time.RFC3339Nano
-	// zerolog.TimeFieldFormat = zerolog.TimeFormatUnixMs
+	if os.Getenv("LOG_TIME_MS") == "1" {
+		// Log with milliseconds
+		zerolog.TimeFieldFormat = zerolog.TimeFormatUnixMs
+	} else {
+		zerolog.TimeFieldFormat = time.RFC3339Nano
+	}
+
+	// Google logging support
+	// zerolog.LevelFieldName = "severity"
+
 	zerolog.TimestampFieldName = "time"
 
 	logger := zerolog.New(os.Stdout).With().Timestamp().Logger()
@@ -44,8 +52,12 @@ func NewLogger() zerolog.Logger {
 	if os.Getenv("PRETTY") == "1" {
 		logger = logger.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 	}
-	if os.Getenv("DEBUG") == "1" {
+	if os.Getenv("TRACE") == "1" {
+		zerolog.SetGlobalLevel(zerolog.TraceLevel)
+	} else if os.Getenv("DEBUG") == "1" {
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)
+	} else {
+		zerolog.SetGlobalLevel(zerolog.InfoLevel)
 	}
 
 	return logger
