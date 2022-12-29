@@ -1,10 +1,12 @@
 package parquet_accumulator
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"github.com/danthegoodman1/gojsonutils"
 	"github.com/xitongsys/parquet-go-source/local"
+	"github.com/xitongsys/parquet-go-source/s3v2"
 	"github.com/xitongsys/parquet-go/reader"
 	"github.com/xitongsys/parquet-go/writer"
 	"os"
@@ -63,6 +65,8 @@ func TestFullCycle(t *testing.T) {
 	}
 	psa := NewParquetAccumulator()
 	psa.WriteRow(flatMap)
+
+	t.Log("cols", psa.GetColumns())
 
 	parquetSchema, err := psa.GetSchemaString()
 	if err != nil {
@@ -135,4 +139,16 @@ func TestFullCycle(t *testing.T) {
 
 	pr.ReadStop()
 	fr.Close()
+}
+
+func TestS3Reader(t *testing.T) {
+	// TEMP
+	r, _ := s3v2.NewS3FileReaderWithParams(context.Background(), s3v2.S3FileReaderParams{
+		Bucket:         "",
+		Key:            "",
+		S3Client:       nil,
+		Version:        nil,
+		MinRequestSize: 0,
+	})
+	r = r
 }

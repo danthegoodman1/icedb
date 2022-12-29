@@ -103,6 +103,14 @@ func (pa *ParquetSchemaAccumulator) fieldExists(fieldName string) (exists bool) 
 	return
 }
 
+func (pa *ParquetSchemaAccumulator) GetColumns() []string {
+	var cols []string
+	for _, field := range pa.schema.Fields {
+		cols = append(cols, field.TagStructs.Name)
+	}
+	return cols
+}
+
 // ToParquetJSONSchema recursively converts
 func (ps *ParquetSchema) ToParquetJSONSchema() *ParquetJSONSchema {
 	var tagArr []string

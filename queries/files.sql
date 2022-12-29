@@ -11,12 +11,14 @@ INSERT INTO files (
     enabled,
     path,
     bytes,
-    rows
+    rows,
+    columns
 ) VALUES (
     @namespace,
     @enabled,
     @path,
     @bytes,
-    @rows
+    @rows,
+    @columns
 )
 ;

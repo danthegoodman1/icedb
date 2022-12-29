@@ -18,7 +18,7 @@ require (
 	github.com/rubenv/sql-migrate v1.2.0
 	github.com/segmentio/ksuid v1.0.4
 	github.com/xitongsys/parquet-go v1.6.2
-	github.com/xitongsys/parquet-go-source v0.0.0-20200817004010-026bad9b25d0
+	github.com/xitongsys/parquet-go-source v0.0.0-20221025031416-9877e685ef65
 	golang.org/x/net v0.1.0
 )
 
@@ -37,7 +37,7 @@ require (
 	github.com/jackc/pgservicefile v0.0.0-20200714003250-2b9c44734f2b // indirect
 	github.com/jackc/puddle v1.3.0 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
-	github.com/klauspost/compress v1.13.1 // indirect
+	github.com/klauspost/compress v1.15.9 // indirect
 	github.com/labstack/gommon v0.4.0 // indirect
 	github.com/leodido/go-urn v1.2.1 // indirect
 	github.com/mattn/go-colorable v0.1.12 // indirect
@@ -49,6 +49,6 @@ require (
 	golang.org/x/crypto v0.0.0-20220829220503-c86fa9a7ed90 // indirect
 	golang.org/x/sys v0.1.0 // indirect
 	golang.org/x/text v0.4.0 // indirect
-	golang.org/x/time v0.0.0-20201208040808-7e3f01d25324 // indirect
+	golang.org/x/time v0.0.0-20220224211638-0e9765cccd65 // indirect
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
 )

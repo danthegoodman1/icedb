@@ -8,11 +8,24 @@ import (
 	"errors"
 	"fmt"
 	"github.com/danthegoodman1/gojsonutils"
+	"github.com/danthegoodman1/icedb/crdb"
 	"github.com/danthegoodman1/icedb/parquet_accumulator"
+	"github.com/danthegoodman1/icedb/query"
+	"github.com/danthegoodman1/icedb/s3"
+	"github.com/danthegoodman1/icedb/utils"
+	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/rs/zerolog"
 	"github.com/xitongsys/parquet-go/writer"
 	"net/http"
 	"time"
+)
+
+type (
+	InsertStats struct {
+		NumRows      int64
+		BytesWritten int64
+		TimeNS       int64
+	}
 )
 
 var (
@@ -25,6 +38,7 @@ func (s *HTTPServer) InsertHandler(c *CustomContext) error {
 
 	logger := zerolog.Ctx(ctx)
 
+	start := time.Now()
 	// Get namespace to write to
 
 	// Extract rows (flattened) and columns from format (JSON, NDJSON)
@@ -66,11 +80,11 @@ func (s *HTTPServer) InsertHandler(c *CustomContext) error {
 	}
 
 	for _, row := range rawFlatRows {
-		bytes, err := json.Marshal(row)
+		rowBytes, err := json.Marshal(row)
 		if err != nil {
 			return c.InternalError(err, "error in json.Marshal of flat row")
 		}
-		err = pw.Write(bytes)
+		err = pw.Write(rowBytes)
 		if err != nil {
 			return c.InternalError(err, "error in pw.Write")
 		}
@@ -81,10 +95,33 @@ func (s *HTTPServer) InsertHandler(c *CustomContext) error {
 	}
 
 	// Write parquet file to S3
+	// TODO: Based on partition scheme
+	fileName := fmt.Sprintf("p/%s.parquet", utils.GenKSortedID(""))
+	_, err = s3.WriteBytesToS3(ctx, fileName, &b, nil)
+	if err != nil {
+		return c.InternalError(err, "error uploading to s3")
+	}
 
 	// Insert file metadata
+	err = utils.ReliableExec(ctx, crdb.PGPool, time.Second*10, func(ctx context.Context, conn *pgxpool.Conn) error {
+		q := query.New(conn)
+		return q.InsertFile(ctx, query.InsertFileParams{
+			Namespace: "tempns",
+			Enabled:   true,
+			Path:      fileName,
+			Bytes:     int64(b.Len()),
+			Rows:      int64(len(rawFlatRows)),
+			Columns:   psa.GetColumns(),
+		})
+	})
+	end := time.Since(start)
 
 	// Respond with metrics
+	stats := InsertStats{
+		NumRows:      int64(len(rawFlatRows)),
+		BytesWritten: int64(b.Len()),
+		TimeNS:       end.Nanoseconds(),
+	}
 
-	return c.String(http.StatusAccepted, "")
+	return c.JSON(http.StatusAccepted, stats)
 }
