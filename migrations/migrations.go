@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	// ensure "pgx" driver is loaded
-	"github.com/danthegoodman1/GoAPITemplate/gologger"
+	"github.com/danthegoodman1/icedb/gologger"
 	_ "github.com/jackc/pgx/v4/stdlib"
 	migrate "github.com/rubenv/sql-migrate"
 )

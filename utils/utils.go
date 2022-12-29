@@ -15,7 +15,7 @@ import (
 	"github.com/jackc/pgtype"
 
 	"github.com/cockroachdb/cockroach-go/v2/crdb/crdbpgx"
-	"github.com/danthegoodman1/GoAPITemplate/gologger"
+	"github.com/danthegoodman1/icedb/gologger"
 	"github.com/labstack/echo/v4"
 	gonanoid "github.com/matoous/go-nanoid/v2"
 	"github.com/rs/zerolog"

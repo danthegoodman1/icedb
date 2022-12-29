@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/danthegoodman1/GoAPITemplate/gologger"
-	"github.com/danthegoodman1/GoAPITemplate/utils"
+	"github.com/danthegoodman1/icedb/gologger"
+	"github.com/danthegoodman1/icedb/utils"
 	"github.com/jackc/pgx/v4/pgxpool"
 )
 

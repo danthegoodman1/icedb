@@ -1,4 +1,4 @@
-module github.com/danthegoodman1/GoAPITemplate
+module github.com/danthegoodman1/icedb
 
 go 1.18
 

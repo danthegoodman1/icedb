@@ -8,11 +8,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/danthegoodman1/GoAPITemplate/crdb"
-	"github.com/danthegoodman1/GoAPITemplate/gologger"
-	"github.com/danthegoodman1/GoAPITemplate/http_server"
-	"github.com/danthegoodman1/GoAPITemplate/migrations"
-	"github.com/danthegoodman1/GoAPITemplate/utils"
+	"github.com/danthegoodman1/icedb/crdb"
+	"github.com/danthegoodman1/icedb/gologger"
+	"github.com/danthegoodman1/icedb/http_server"
+	"github.com/danthegoodman1/icedb/utils"
 )
 
 var logger = gologger.NewLogger()
@@ -25,11 +24,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	err := migrations.CheckMigrations(utils.CRDB_DSN)
-	if err != nil {
-		logger.Error().Err(err).Msg("Error checking migrations")
-		os.Exit(1)
-	}
+	// err := migrations.CheckMigrations(utils.CRDB_DSN)
+	// if err != nil {
+	// 	logger.Error().Err(err).Msg("Error checking migrations")
+	// 	os.Exit(1)
+	// }
 
 	httpServer := http_server.StartHTTPServer()
 
