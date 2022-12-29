@@ -1,0 +1,8 @@
+version: 1
+packages:
+  - path: "query"
+    name: "query"
+    engine: "postgresql"
+    schema: "schema.sql"
+    queries: "./queries/"
+    sql_package: "pgx/v4"
