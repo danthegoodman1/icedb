@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/danthegoodman1/gojsonutils"
+	"github.com/danthegoodman1/icedb/utils"
 	"github.com/xitongsys/parquet-go-source/local"
 	"github.com/xitongsys/parquet-go-source/s3v2"
 	"github.com/xitongsys/parquet-go/reader"
 	"github.com/xitongsys/parquet-go/writer"
 	"os"
+	"reflect"
 	"testing"
 )
 
@@ -49,7 +51,7 @@ func TestGetSchemaString(t *testing.T) {
 func TestFullCycle(t *testing.T) {
 	jsonMap := map[string]any{
 		"colA": map[string]any{
-			"a": "hey",
+			"a": utils.Ptr("hey"),
 			"b": 2,
 		},
 		"colC": []any{"hey"},
@@ -129,12 +131,15 @@ func TestFullCycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, item := range res {
-		// item is a struct
-		b, err := json.Marshal(item)
-		if err != nil {
-			t.Fatal(err)
+		// row is a struct
+		rowMap := make(map[string]any)
+		v := reflect.ValueOf(item)
+		typeOf := v.Type()
+		for i := 0; i < v.NumField(); i++ {
+			rowMap[typeOf.Field(i).Name] = v.Field(i).Interface()
+			t.Logf("%s: %+v", typeOf.Field(i).Name, reflect.TypeOf(v.Field(i).Interface()))
 		}
-		t.Logf("%+v", string(b))
+		t.Logf("row: %+v", rowMap)
 	}
 
 	pr.ReadStop()

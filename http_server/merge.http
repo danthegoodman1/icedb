@@ -1,0 +1,7 @@
+### Test Insert NDJSON
+POST http://localhost:8080/merge
+Content-Type: application/json
+
+{
+  "Namespace": "testns"
+}

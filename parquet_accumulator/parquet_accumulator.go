@@ -86,6 +86,10 @@ func (pa *ParquetSchemaAccumulator) getParquetSchema(key string, item any) *Parq
 		schema.TagStructs.Type = "BYTE_ARRAY"
 		schema.TagStructs.ConvertedType = "UTF8"
 		schema.TagStructs.Encoding = "PLAIN"
+	} else if _, isStr := item.(*string); isStr {
+		schema.TagStructs.Type = "BYTE_ARRAY"
+		schema.TagStructs.ConvertedType = "UTF8"
+		schema.TagStructs.Encoding = "PLAIN"
 	} else {
 		// Float otherwise since we can't tell the difference in JSON
 		schema.TagStructs.Type = "DOUBLE"
