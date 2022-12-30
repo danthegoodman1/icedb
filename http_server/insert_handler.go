@@ -33,8 +33,14 @@ type (
 
 	InsertStats struct {
 		NumRows      int64
+		NumFiles     int64
 		BytesWritten int64
 		TimeNS       int64
+	}
+
+	PartitionData struct {
+		Accumulator parquet_accumulator.ParquetSchemaAccumulator
+		Rows        []map[string]any
 	}
 )
 
@@ -60,9 +66,7 @@ func (s *HTTPServer) InsertHandler(c *CustomContext) error {
 	// Extract rows (flattened) and columns from format (JSON, NDJSON)
 	defer c.Request().Body.Close()
 
-	// TODO: Make a psa for each partition found
-	psa := parquet_accumulator.NewParquetAccumulator()
-	var rawFlatRows []map[string]any
+	parts := make(map[string]*PartitionData)
 
 	if reqBody.RowsString != nil {
 		ndJSONScanner := bufio.NewScanner(strings.NewReader(*reqBody.RowsString))
@@ -85,10 +89,23 @@ func (s *HTTPServer) InsertHandler(c *CustomContext) error {
 				return c.InternalError(ErrNotFlatMap, fmt.Sprintf("got a non flat map: %+v", flat))
 			}
 
-			// TODO: Determine partition and write row to that
+			// Determine partition and write row to that
+			part, err := partitioner.GetRowPartition(flatMap, reqBody.Partitioner)
+			if err != nil {
+				// TODO: Check for user errors
+				return c.InternalError(err, "error getting partition for row")
+			}
 
-			rawFlatRows = append(rawFlatRows, flatMap)
-			psa.WriteRow(flatMap)
+			if _, exists := parts[part]; !exists {
+				parts[part] = &PartitionData{
+					Accumulator: parquet_accumulator.NewParquetAccumulator(),
+				}
+			}
+
+			p := parts[part]
+
+			p.Rows = append(p.Rows, flatMap)
+			p.Accumulator.WriteRow(flatMap)
 		}
 	} else if reqBody.Rows != nil {
 		for _, row := range reqBody.Rows {
@@ -102,79 +119,95 @@ func (s *HTTPServer) InsertHandler(c *CustomContext) error {
 				return c.InternalError(ErrNotFlatMap, fmt.Sprintf("got a non flat map: %+v", flat))
 			}
 
-			// TODO: Determine partition and write row to that
+			// Determine partition and write row to that
+			part, err := partitioner.GetRowPartition(flatMap, reqBody.Partitioner)
+			if err != nil {
+				// TODO: Check for user errors
+				return c.InternalError(err, "error getting partition for row")
+			}
 
-			rawFlatRows = append(rawFlatRows, flatMap)
-			psa.WriteRow(flatMap)
+			if _, exists := parts[part]; !exists {
+				parts[part] = &PartitionData{
+					Accumulator: parquet_accumulator.NewParquetAccumulator(),
+				}
+			}
+
+			p := parts[part]
+
+			p.Rows = append(p.Rows, flatMap)
+			p.Accumulator.WriteRow(flatMap)
 		}
 	}
 
-	if len(rawFlatRows) == 0 {
+	if len(parts) == 0 {
 		return c.String(http.StatusBadRequest, "no rows found")
 	}
 
-	// Generate parquet schema from columns
-	parquetSchema, err := psa.GetSchemaString()
-	if err != nil {
-		return c.InternalError(err, "error in GetSchemaString")
-	}
+	var totalBytes int64 = 0
+	var numRows int64 = 0
 
-	// Convert rows to a parquet file
-	var b bytes.Buffer
-	pw, err := writer.NewJSONWriterFromWriter(parquetSchema, &b, 4)
-	if err != nil {
-		return c.InternalError(err, "error in NewJSONWriterFromWriter")
-	}
-
-	for _, row := range rawFlatRows {
-		rowBytes, err := json.Marshal(row)
+	for partID, partData := range parts {
+		// Generate parquet schema from columns
+		parquetSchema, err := partData.Accumulator.GetSchemaString()
 		if err != nil {
-			return c.InternalError(err, "error in json.Marshal of flat row")
+			return c.InternalError(err, "error in GetSchemaString")
 		}
-		err = pw.Write(rowBytes)
+
+		// Convert rows to a parquet file
+		var b bytes.Buffer
+		pw, err := writer.NewJSONWriterFromWriter(parquetSchema, &b, 4)
 		if err != nil {
-			return c.InternalError(err, "error in pw.Write")
+			return c.InternalError(err, "error in NewJSONWriterFromWriter")
 		}
-	}
-	err = pw.WriteStop()
-	if err != nil {
-		return c.InternalError(err, "error in pw.WriteStop")
-	}
 
-	byteLen := b.Len()
+		for _, row := range partData.Rows {
+			rowBytes, err := json.Marshal(row)
+			if err != nil {
+				return c.InternalError(err, "error in json.Marshal of flat row")
+			}
+			err = pw.Write(rowBytes)
+			if err != nil {
+				return c.InternalError(err, "error in pw.Write")
+			}
+			numRows++
+		}
+		err = pw.WriteStop()
+		if err != nil {
+			return c.InternalError(err, "error in pw.WriteStop")
+		}
 
-	// Write parquet file to S3
-	// FIXME: DON'T JUST USE A SINGLE PARTITION
-	part, err := partitioner.GetRowPartition(rawFlatRows[0], reqBody.Partitioner)
-	if err != nil {
-		// TODO: Check if this is a user error
-		return c.InternalError(err, "error in GetRowPartition")
-	}
+		byteLen := b.Len()
+		totalBytes += int64(byteLen)
 
-	fileName := fmt.Sprintf("ns=%s/%s/%s.parquet", reqBody.Namespace, part, utils.GenKSortedID(""))
-	_, err = s3.WriteBytesToS3(ctx, fileName, &b, nil)
-	if err != nil {
-		return c.InternalError(err, "error uploading to s3")
-	}
+		// Write parquet file to S3
+		fileName := fmt.Sprintf("ns=%s/%s/%s.parquet", reqBody.Namespace, partID, utils.GenKSortedID(""))
+		_, err = s3.WriteBytesToS3(ctx, fileName, &b, nil)
+		if err != nil {
+			return c.InternalError(err, "error uploading to s3")
+		}
 
-	// Insert file metadata
-	err = utils.ReliableExec(ctx, crdb.PGPool, time.Second*10, func(ctx context.Context, conn *pgxpool.Conn) error {
-		q := query.New(conn)
-		return q.InsertFile(ctx, query.InsertFileParams{
-			Namespace: reqBody.Namespace,
-			Enabled:   true,
-			Path:      fileName,
-			Bytes:     int64(byteLen),
-			Rows:      int64(len(rawFlatRows)),
-			Columns:   psa.GetColumns(),
+		// Insert file metadata
+		err = utils.ReliableExec(ctx, crdb.PGPool, time.Second*10, func(ctx context.Context, conn *pgxpool.Conn) error {
+			q := query.New(conn)
+			return q.InsertFile(ctx, query.InsertFileParams{
+				Namespace: reqBody.Namespace,
+				Enabled:   true,
+				Path:      fileName,
+				Bytes:     int64(byteLen),
+				Rows:      int64(len(partData.Rows)),
+				Columns:   partData.Accumulator.GetColumns(),
+			})
 		})
-	})
+
+	}
+
 	end := time.Since(start)
 
 	// Respond with metrics
 	stats := InsertStats{
-		NumRows:      int64(len(rawFlatRows)),
-		BytesWritten: int64(byteLen),
+		NumRows:      numRows,
+		BytesWritten: totalBytes,
+		NumFiles:     int64(len(parts)),
 		TimeNS:       end.Nanoseconds(),
 	}
 
