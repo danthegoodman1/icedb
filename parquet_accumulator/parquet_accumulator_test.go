@@ -66,7 +66,7 @@ func TestFullCycle(t *testing.T) {
 	psa := NewParquetAccumulator()
 	psa.WriteRow(flatMap)
 
-	t.Log("cols", psa.GetColumns())
+	t.Log("cols", psa.GetColumnNames())
 
 	parquetSchema, err := psa.GetSchemaString()
 	if err != nil {

@@ -18,7 +18,7 @@ Content-Type: application/json
 
 {
   "Namespace": "testns",
-  "Rows": [{"yyy":"eee"}, {"bbb":"zzz"}],
+  "Rows": [{"yyy":"eee"}, {"bbb":[["zzz"]]}],
   "Partitioner": [{
     "Func": "toDay",
     "Args": ["now()"],

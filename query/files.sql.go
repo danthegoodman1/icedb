@@ -97,7 +97,7 @@ WITH eligible_files AS (
     ORDER BY partition ASC
     LIMIT 1
 )
-SELECT namespace, enabled, files.partition, name, bytes, rows, columns, created_at, updated_at, cnt, eligible_files.partition
+SELECT enabled, namespace, files.partition, name, bytes, rows, columns, created_at, updated_at, cnt, eligible_files.partition
 FROM files
 JOIN eligible_files ON eligible_files.partition = files.partition
 WHERE files.namespace = $1
@@ -114,8 +114,8 @@ type SelectFilesForMergingParams struct {
 }
 
 type SelectFilesForMergingRow struct {
-	Namespace   string
 	Enabled     bool
+	Namespace   string
 	Partition   string
 	Name        string
 	Bytes       int64
@@ -137,8 +137,8 @@ func (q *Queries) SelectFilesForMerging(ctx context.Context, arg SelectFilesForM
 	for rows.Next() {
 		var i SelectFilesForMergingRow
 		if err := rows.Scan(
-			&i.Namespace,
 			&i.Enabled,
+			&i.Namespace,
 			&i.Partition,
 			&i.Name,
 			&i.Bytes,

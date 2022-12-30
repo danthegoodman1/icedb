@@ -107,10 +107,34 @@ func (pa *ParquetSchemaAccumulator) fieldExists(fieldName string) (exists bool) 
 	return
 }
 
-func (pa *ParquetSchemaAccumulator) GetColumns() []string {
+func (pa *ParquetSchemaAccumulator) GetColumnNames() []string {
 	var cols []string
 	for _, field := range pa.schema.Fields {
 		cols = append(cols, field.TagStructs.Name)
+	}
+	return cols
+}
+
+func (ps *ParquetSchema) GetType() string {
+	switch ps.TagStructs.Type {
+	case "BYTE_ARRAY":
+		return "string"
+	case "DOUBLE":
+		return "float"
+	case "LIST":
+		return fmt.Sprintf("list(%s)", ps.Fields[0].GetType())
+	default:
+		// This should not be possible, don't want to do massive error checking though
+		// I can already hear Rust elitists yelling at me
+		return "I AM BROKEN AH"
+	}
+}
+
+// GetColumnTypes returns the types of columns in the same order, either `string`, `float`, or `list(x)` (recursive0
+func (pa *ParquetSchemaAccumulator) GetColumnTypes() []string {
+	var cols []string
+	for _, field := range pa.schema.Fields {
+		cols = append(cols, field.GetType())
 	}
 	return cols
 }
