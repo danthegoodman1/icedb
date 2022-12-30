@@ -1,0 +1,27 @@
+### Test Insert NDJSON
+POST http://localhost:8080/insert
+Content-Type: application/json
+
+{
+  "Namespace": "testns",
+  "RowsString": "{\"hey\":\"h\"}\n{\"hey\":\"ho\"}",
+  "Partitioner": [{
+    "Func": "toDay",
+    "Args": ["now()"],
+    "As": "day"
+  }]
+}
+
+### Test Insert JSON
+POST http://localhost:8080/insert
+Content-Type: application/json
+
+{
+  "Namespace": "testns",
+  "Rows": [{"yyy":"eee"}, {"bbb":"zzz"}],
+  "Partitioner": [{
+    "Func": "toDay",
+    "Args": ["now()"],
+    "As": "day"
+  }]
+}

@@ -10,16 +10,27 @@ import (
 	"github.com/danthegoodman1/gojsonutils"
 	"github.com/danthegoodman1/icedb/crdb"
 	"github.com/danthegoodman1/icedb/parquet_accumulator"
+	"github.com/danthegoodman1/icedb/partitioner"
 	"github.com/danthegoodman1/icedb/query"
 	"github.com/danthegoodman1/icedb/s3"
 	"github.com/danthegoodman1/icedb/utils"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/xitongsys/parquet-go/writer"
 	"net/http"
+	"strings"
 	"time"
 )
 
 type (
+	InsertReqBody struct {
+		Namespace string
+		// Line-delimited JSON (NDJSON)
+		RowsString *string
+		// Array of JSON
+		Rows        []*map[string]any
+		Partitioner []partitioner.PartitionPlan
+	}
+
 	InsertStats struct {
 		NumRows      int64
 		BytesWritten int64
@@ -38,36 +49,64 @@ func (s *HTTPServer) InsertHandler(c *CustomContext) error {
 	//logger := zerolog.Ctx(ctx)
 
 	start := time.Now()
+
+	var reqBody InsertReqBody
+	if err := ValidateRequest(c, &reqBody); err != nil {
+		return c.String(http.StatusBadRequest, err.Error())
+	}
+
 	// Get namespace to write to
 
 	// Extract rows (flattened) and columns from format (JSON, NDJSON)
-	ndJSONScanner := bufio.NewScanner(c.Request().Body)
 	defer c.Request().Body.Close()
 
+	// TODO: Make a psa for each partition found
 	psa := parquet_accumulator.NewParquetAccumulator()
 	var rawFlatRows []map[string]any
 
-	for ndJSONScanner.Scan() {
-		var raw any
-		err := json.Unmarshal([]byte(ndJSONScanner.Text()), &raw)
-		if err != nil {
-			return fmt.Errorf("error in json.Unmarshal: %w", err)
-		}
-		jsonMap, ok := raw.(map[string]any)
-		if !ok {
-			return c.String(http.StatusBadRequest, "line was not JSON")
-		}
-		flat, err := gojsonutils.Flatten(jsonMap, nil)
-		if err != nil {
-			return c.InternalError(err, "error flattening JSON map")
-		}
-		flatMap, ok := flat.(map[string]any)
-		if !ok {
-			return c.InternalError(ErrNotFlatMap, fmt.Sprintf("got a non flat map: %+v", flat))
-		}
+	if reqBody.RowsString != nil {
+		ndJSONScanner := bufio.NewScanner(strings.NewReader(*reqBody.RowsString))
+		for ndJSONScanner.Scan() {
+			var raw any
+			err := json.Unmarshal([]byte(ndJSONScanner.Text()), &raw)
+			if err != nil {
+				return fmt.Errorf("error in json.Unmarshal: %w", err)
+			}
+			jsonMap, ok := raw.(map[string]any)
+			if !ok {
+				return c.String(http.StatusBadRequest, "line was not JSON")
+			}
+			flat, err := gojsonutils.Flatten(jsonMap, nil)
+			if err != nil {
+				return c.InternalError(err, "error flattening JSON map")
+			}
+			flatMap, ok := flat.(map[string]any)
+			if !ok {
+				return c.InternalError(ErrNotFlatMap, fmt.Sprintf("got a non flat map: %+v", flat))
+			}
 
-		rawFlatRows = append(rawFlatRows, flatMap)
-		psa.WriteRow(flatMap)
+			// TODO: Determine partition and write row to that
+
+			rawFlatRows = append(rawFlatRows, flatMap)
+			psa.WriteRow(flatMap)
+		}
+	} else if reqBody.Rows != nil {
+		for _, row := range reqBody.Rows {
+			flat, err := gojsonutils.Flatten(*row, nil)
+			if err != nil {
+				return c.InternalError(err, "error flattening JSON map")
+			}
+			fmt.Printf("%+v\n", flat)
+			flatMap, ok := flat.(map[string]any)
+			if !ok {
+				return c.InternalError(ErrNotFlatMap, fmt.Sprintf("got a non flat map: %+v", flat))
+			}
+
+			// TODO: Determine partition and write row to that
+
+			rawFlatRows = append(rawFlatRows, flatMap)
+			psa.WriteRow(flatMap)
+		}
 	}
 
 	if len(rawFlatRows) == 0 {
@@ -105,8 +144,14 @@ func (s *HTTPServer) InsertHandler(c *CustomContext) error {
 	byteLen := b.Len()
 
 	// Write parquet file to S3
-	// TODO: Based on partition scheme
-	fileName := fmt.Sprintf("p/%s.parquet", utils.GenKSortedID(""))
+	// FIXME: DON'T JUST USE A SINGLE PARTITION
+	part, err := partitioner.GetRowPartition(rawFlatRows[0], reqBody.Partitioner)
+	if err != nil {
+		// TODO: Check if this is a user error
+		return c.InternalError(err, "error in GetRowPartition")
+	}
+
+	fileName := fmt.Sprintf("ns=%s/%s/%s.parquet", reqBody.Namespace, part, utils.GenKSortedID(""))
 	_, err = s3.WriteBytesToS3(ctx, fileName, &b, nil)
 	if err != nil {
 		return c.InternalError(err, "error uploading to s3")
@@ -116,7 +161,7 @@ func (s *HTTPServer) InsertHandler(c *CustomContext) error {
 	err = utils.ReliableExec(ctx, crdb.PGPool, time.Second*10, func(ctx context.Context, conn *pgxpool.Conn) error {
 		q := query.New(conn)
 		return q.InsertFile(ctx, query.InsertFileParams{
-			Namespace: "tempns",
+			Namespace: reqBody.Namespace,
 			Enabled:   true,
 			Path:      fileName,
 			Bytes:     int64(byteLen),

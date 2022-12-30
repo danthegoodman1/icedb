@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/danthegoodman1/icedb/partitioner"
 	"os"
 	"os/signal"
 	"syscall"
@@ -31,6 +32,9 @@ func main() {
 	// }
 
 	httpServer := http_server.StartHTTPServer()
+
+	// Register partition functions
+	partitioner.RegisterFunctions()
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
