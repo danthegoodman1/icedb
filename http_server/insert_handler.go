@@ -35,7 +35,7 @@ type (
 		NumRows      int64
 		NumFiles     int64
 		BytesWritten int64
-		TimeNS       int64
+		TimeMS       int64
 	}
 
 	PartitionData struct {
@@ -212,7 +212,7 @@ func (s *HTTPServer) InsertHandler(c *CustomContext) error {
 		NumRows:      numRows,
 		BytesWritten: totalBytes,
 		NumFiles:     int64(len(parts)),
-		TimeNS:       end.Nanoseconds(),
+		TimeMS:       end.Milliseconds(),
 	}
 
 	return c.JSON(http.StatusAccepted, stats)

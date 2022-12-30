@@ -53,11 +53,9 @@ type (
 	MergeStats struct {
 		FilesMerged int64
 		RowsMerged  int64
-		// The sum of the files that were merged
-		PreMergeBytes int64
 		// The size of the file after merging
 		PostMergeBytes int64
-		TimeNS         int64
+		TimeMS         int64
 		// The partition path, minus the leading `ns={Namespace}/`.
 		//
 		// Ex: `year=2022/month=12/day=30`
@@ -85,6 +83,7 @@ func (s *HTTPServer) MergeHandler(c *CustomContext) error {
 
 	// Get the files we want to merge
 	var enabledFilesToMerge []query.SelectFilesForMergingRow
+	st := time.Now()
 	err := utils.ReliableExec(ctx, crdb.PGPool, time.Second*time.Duration(utils.Deref(reqBody.MaxRuntimeSec, 60)), func(ctx context.Context, conn *pgxpool.Conn) (err error) {
 		q := query.New(conn)
 
@@ -103,6 +102,7 @@ func (s *HTTPServer) MergeHandler(c *CustomContext) error {
 	if err != nil {
 		return c.InternalError(err, "error getting files for merging")
 	}
+	logger.Debug().Msgf("got files to merge in %s", time.Since(st))
 	if len(enabledFilesToMerge) < 2 {
 		logger.Debug().Msg("not enough files to merge")
 		return c.NoContent(http.StatusNoContent)
@@ -130,6 +130,7 @@ func (s *HTTPServer) MergeHandler(c *CustomContext) error {
 
 	// Get files to merge
 	for _, file := range enabledFilesToMerge {
+		st := time.Now()
 		logger := logger.With().Str("fileName", file.Name).Str("partition", file.Partition).Logger()
 		logger.Debug().Msg("reading file from S3")
 		r, err := s3_pq.NewS3FileReaderWithParams(context.Background(), s3_pq.S3FileReaderParams{
@@ -163,8 +164,11 @@ func (s *HTTPServer) MergeHandler(c *CustomContext) error {
 			flatRows = append(flatRows, rowMap)
 			accumulator.WriteRow(rowMap)
 		}
+		res.FilesMerged++
+		logger.Debug().Msgf("read file to merge in %s", time.Since(st))
 	}
 
+	st = time.Now()
 	parquetSchema, err := accumulator.GetSchemaString()
 	if err != nil {
 		return c.InternalError(err, "error getting schema string")
@@ -238,7 +242,9 @@ func (s *HTTPServer) MergeHandler(c *CustomContext) error {
 		return fmt.Errorf("error updating meta store: %w", err)
 	}
 
-	res.TimeNS = time.Since(start).Nanoseconds()
+	logger.Debug().Msgf("merged files in in %s", time.Since(st))
+
+	res.TimeMS = time.Since(start).Milliseconds()
 
 	return c.JSON(http.StatusOK, res)
 }
