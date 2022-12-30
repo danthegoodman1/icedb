@@ -12,7 +12,7 @@ import (
 	"github.com/danthegoodman1/icedb/parquet_accumulator"
 	"github.com/danthegoodman1/icedb/partitioner"
 	"github.com/danthegoodman1/icedb/query"
-	"github.com/danthegoodman1/icedb/s3"
+	"github.com/danthegoodman1/icedb/s3_helper"
 	"github.com/danthegoodman1/icedb/utils"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/xitongsys/parquet-go/writer"
@@ -35,7 +35,7 @@ type (
 		NumRows      int64
 		NumFiles     int64
 		BytesWritten int64
-		TimeNS       int64
+		TimeMS       int64
 	}
 
 	PartitionData struct {
@@ -180,8 +180,8 @@ func (s *HTTPServer) InsertHandler(c *CustomContext) error {
 		totalBytes += int64(byteLen)
 
 		// Write parquet file to S3
-		fileName := fmt.Sprintf("ns=%s/%s/%s.parquet", reqBody.Namespace, partID, utils.GenKSortedID(""))
-		_, err = s3.WriteBytesToS3(ctx, fileName, &b, nil)
+		fileName := fmt.Sprintf("%s.parquet", utils.GenKSortedID(""))
+		_, err = s3_helper.WriteBytesToS3(ctx, fmt.Sprintf("ns=%s/%s/%s", reqBody.Namespace, partID, fileName), &b, nil)
 		if err != nil {
 			return c.InternalError(err, "error uploading to s3")
 		}
@@ -192,12 +192,16 @@ func (s *HTTPServer) InsertHandler(c *CustomContext) error {
 			return q.InsertFile(ctx, query.InsertFileParams{
 				Namespace: reqBody.Namespace,
 				Enabled:   true,
-				Path:      fileName,
+				Partition: partID,
+				Name:      fileName,
 				Bytes:     int64(byteLen),
 				Rows:      int64(len(partData.Rows)),
 				Columns:   partData.Accumulator.GetColumns(),
 			})
 		})
+		if err != nil {
+			return c.InternalError(err, "error inserting file")
+		}
 
 	}
 
@@ -208,7 +212,7 @@ func (s *HTTPServer) InsertHandler(c *CustomContext) error {
 		NumRows:      numRows,
 		BytesWritten: totalBytes,
 		NumFiles:     int64(len(parts)),
-		TimeNS:       end.Nanoseconds(),
+		TimeMS:       end.Milliseconds(),
 	}
 
 	return c.JSON(http.StatusAccepted, stats)

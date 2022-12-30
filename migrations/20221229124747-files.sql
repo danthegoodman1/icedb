@@ -1,9 +1,10 @@
 
 -- +migrate Up
 CREATE TABLE files (
-    namespace TEXT NOT NULL,
     enabled BOOLEAN NOT NULL,
-    path TEXT NOT NULL,
+    namespace TEXT NOT NULL,
+    partition TEXT NOT NULL,
+    name TEXT NOT NULL,
 
     bytes INT8 NOT NULL,
     rows INT8 NOT NULL,
@@ -12,7 +13,7 @@ CREATE TABLE files (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
-    PRIMARY KEY(namespace, enabled, path)
+    PRIMARY KEY(enabled, namespace, partition, name)
 )
 ;
 

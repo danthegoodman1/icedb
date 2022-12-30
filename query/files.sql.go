@@ -7,28 +7,34 @@ package query
 
 import (
 	"context"
+	"time"
 )
 
 const getAllEnabledFiles = `-- name: GetAllEnabledFiles :many
-SELECT path
+SELECT partition, name
 FROM files
 WHERE namespace = $1
 AND enabled = true
 `
 
-func (q *Queries) GetAllEnabledFiles(ctx context.Context, namespace string) ([]string, error) {
+type GetAllEnabledFilesRow struct {
+	Partition string
+	Name      string
+}
+
+func (q *Queries) GetAllEnabledFiles(ctx context.Context, namespace string) ([]GetAllEnabledFilesRow, error) {
 	rows, err := q.db.Query(ctx, getAllEnabledFiles, namespace)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []string
+	var items []GetAllEnabledFilesRow
 	for rows.Next() {
-		var path string
-		if err := rows.Scan(&path); err != nil {
+		var i GetAllEnabledFilesRow
+		if err := rows.Scan(&i.Partition, &i.Name); err != nil {
 			return nil, err
 		}
-		items = append(items, path)
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -40,37 +46,142 @@ const insertFile = `-- name: InsertFile :exec
 INSERT INTO files (
     namespace,
     enabled,
-    path,
     bytes,
     rows,
-    columns
+    columns,
+    partition,
+    name
 ) VALUES (
     $1,
     $2,
     $3,
     $4,
     $5,
-    $6
+    $6,
+    $7
 )
 `
 
 type InsertFileParams struct {
 	Namespace string
 	Enabled   bool
-	Path      string
 	Bytes     int64
 	Rows      int64
 	Columns   []string
+	Partition string
+	Name      string
 }
 
 func (q *Queries) InsertFile(ctx context.Context, arg InsertFileParams) error {
 	_, err := q.db.Exec(ctx, insertFile,
 		arg.Namespace,
 		arg.Enabled,
-		arg.Path,
 		arg.Bytes,
 		arg.Rows,
 		arg.Columns,
+		arg.Partition,
+		arg.Name,
+	)
+	return err
+}
+
+const selectFilesForMerging = `-- name: SelectFilesForMerging :many
+WITH eligible_files AS (
+    SELECT count(*) as cnt, partition
+    FROM files
+    WHERE namespace = $1
+    AND enabled = true
+    AND bytes <= $2
+    GROUP BY partition
+    HAVING count(*) >= 2
+    ORDER BY partition ASC
+    LIMIT 1
+)
+SELECT namespace, enabled, files.partition, name, bytes, rows, columns, created_at, updated_at, cnt, eligible_files.partition
+FROM files
+JOIN eligible_files ON eligible_files.partition = files.partition
+WHERE files.namespace = $1
+AND files.enabled = true
+AND files.partition = eligible_files.partition
+AND files.bytes <= $2
+LIMIT $3
+`
+
+type SelectFilesForMergingParams struct {
+	Namespace string
+	MaxBytes  int64
+	MaxFiles  int32
+}
+
+type SelectFilesForMergingRow struct {
+	Namespace   string
+	Enabled     bool
+	Partition   string
+	Name        string
+	Bytes       int64
+	Rows        int64
+	Columns     []string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+	Cnt         int64
+	Partition_2 string
+}
+
+func (q *Queries) SelectFilesForMerging(ctx context.Context, arg SelectFilesForMergingParams) ([]SelectFilesForMergingRow, error) {
+	rows, err := q.db.Query(ctx, selectFilesForMerging, arg.Namespace, arg.MaxBytes, arg.MaxFiles)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SelectFilesForMergingRow
+	for rows.Next() {
+		var i SelectFilesForMergingRow
+		if err := rows.Scan(
+			&i.Namespace,
+			&i.Enabled,
+			&i.Partition,
+			&i.Name,
+			&i.Bytes,
+			&i.Rows,
+			&i.Columns,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Cnt,
+			&i.Partition_2,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const setFileStates = `-- name: SetFileStates :exec
+UPDATE files
+SET enabled = $1,
+updated_at = NOW()
+WHERE enabled != $1
+AND namespace = $2
+AND partition = $3
+AND name = ANY($4::TEXT[])
+`
+
+type SetFileStatesParams struct {
+	Enabled   bool
+	Namespace string
+	Partition string
+	Names     []string
+}
+
+func (q *Queries) SetFileStates(ctx context.Context, arg SetFileStatesParams) error {
+	_, err := q.db.Exec(ctx, setFileStates,
+		arg.Enabled,
+		arg.Namespace,
+		arg.Partition,
+		arg.Names,
 	)
 	return err
 }

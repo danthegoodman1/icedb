@@ -11,7 +11,8 @@ import (
 type File struct {
 	Namespace string
 	Enabled   bool
-	Path      string
+	Partition string
+	Name      string
 	Bytes     int64
 	Rows      int64
 	Columns   []string
