@@ -7,6 +7,7 @@ package query
 
 import (
 	"context"
+	"time"
 )
 
 const getAllEnabledFiles = `-- name: GetAllEnabledFiles :many
@@ -85,11 +86,24 @@ func (q *Queries) InsertFile(ctx context.Context, arg InsertFileParams) error {
 }
 
 const selectFilesForMerging = `-- name: SelectFilesForMerging :many
-SELECT namespace, enabled, partition, name, bytes, rows, columns, created_at, updated_at
+WITH eligible_files AS (
+    SELECT count(*) as cnt, partition
+    FROM files
+    WHERE namespace = $1
+    AND enabled = true
+    AND bytes <= $2
+    GROUP BY partition
+    HAVING count(*) >= 2
+    ORDER BY partition ASC
+    LIMIT 1
+)
+SELECT namespace, enabled, files.partition, name, bytes, rows, columns, created_at, updated_at, cnt, eligible_files.partition
 FROM files
-WHERE namespace = $1
-AND enabled = true
-AND bytes <= $2
+JOIN eligible_files ON eligible_files.partition = files.partition
+WHERE files.namespace = $1
+AND files.enabled = true
+AND files.partition = eligible_files.partition
+AND files.bytes <= $2
 LIMIT $3
 `
 
@@ -99,15 +113,29 @@ type SelectFilesForMergingParams struct {
 	MaxFiles  int32
 }
 
-func (q *Queries) SelectFilesForMerging(ctx context.Context, arg SelectFilesForMergingParams) ([]File, error) {
+type SelectFilesForMergingRow struct {
+	Namespace   string
+	Enabled     bool
+	Partition   string
+	Name        string
+	Bytes       int64
+	Rows        int64
+	Columns     []string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+	Cnt         int64
+	Partition_2 string
+}
+
+func (q *Queries) SelectFilesForMerging(ctx context.Context, arg SelectFilesForMergingParams) ([]SelectFilesForMergingRow, error) {
 	rows, err := q.db.Query(ctx, selectFilesForMerging, arg.Namespace, arg.MaxBytes, arg.MaxFiles)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []File
+	var items []SelectFilesForMergingRow
 	for rows.Next() {
-		var i File
+		var i SelectFilesForMergingRow
 		if err := rows.Scan(
 			&i.Namespace,
 			&i.Enabled,
@@ -118,6 +146,8 @@ func (q *Queries) SelectFilesForMerging(ctx context.Context, arg SelectFilesForM
 			&i.Columns,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Cnt,
+			&i.Partition_2,
 		); err != nil {
 			return nil, err
 		}

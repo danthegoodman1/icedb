@@ -36,10 +36,23 @@ AND name = ANY(@names::TEXT[])
 ;
 
 -- name: SelectFilesForMerging :many
+WITH eligible_files AS (
+    SELECT count(*) as cnt, partition
+    FROM files
+    WHERE namespace = @namespace
+    AND enabled = true
+    AND bytes <= @max_bytes
+    GROUP BY partition
+    HAVING count(*) >= 2
+    ORDER BY partition ASC
+    LIMIT 1
+)
 SELECT *
 FROM files
-WHERE namespace = @namespace
-AND enabled = true
-AND bytes <= @max_bytes
+JOIN eligible_files ON eligible_files.partition = files.partition
+WHERE files.namespace = @namespace
+AND files.enabled = true
+AND files.partition = eligible_files.partition
+AND files.bytes <= @max_bytes
 LIMIT @max_files
 ;

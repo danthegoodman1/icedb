@@ -84,7 +84,7 @@ func (s *HTTPServer) MergeHandler(c *CustomContext) error {
 	start := time.Now()
 
 	// Get the files we want to merge
-	var enabledFilesToMerge []query.File
+	var enabledFilesToMerge []query.SelectFilesForMergingRow
 	err := utils.ReliableExec(ctx, crdb.PGPool, time.Second*time.Duration(utils.Deref(reqBody.MaxRuntimeSec, 60)), func(ctx context.Context, conn *pgxpool.Conn) (err error) {
 		q := query.New(conn)
 
