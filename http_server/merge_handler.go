@@ -212,7 +212,7 @@ func (s *HTTPServer) MergeHandler(c *CustomContext) error {
 			Name:      fileName,
 			Bytes:     res.PostMergeBytes,
 			Rows:      res.RowsMerged,
-			Columns:   accumulator.GetColumns(),
+			Columns:   accumulator.GetColumnNames(),
 		})
 		if err != nil {
 			return fmt.Errorf("error in InsertFile: %w", err)

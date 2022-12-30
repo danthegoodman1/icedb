@@ -186,18 +186,32 @@ func (s *HTTPServer) InsertHandler(c *CustomContext) error {
 			return c.InternalError(err, "error uploading to s3")
 		}
 
-		// Insert file metadata
 		err = utils.ReliableExec(ctx, crdb.PGPool, time.Second*10, func(ctx context.Context, conn *pgxpool.Conn) error {
 			q := query.New(conn)
-			return q.InsertFile(ctx, query.InsertFileParams{
+			// Insert file metadata
+			err := q.InsertFile(ctx, query.InsertFileParams{
 				Namespace: reqBody.Namespace,
 				Enabled:   true,
 				Partition: partID,
 				Name:      fileName,
 				Bytes:     int64(byteLen),
 				Rows:      int64(len(partData.Rows)),
-				Columns:   partData.Accumulator.GetColumns(),
+				Columns:   partData.Accumulator.GetColumnNames(),
 			})
+			if err != nil {
+				return fmt.Errorf("error in InsertFile: %w", err)
+			}
+
+			// Try to insert columns
+			err = q.InsertColumns(ctx, query.InsertColumnsParams{
+				Namespace: reqBody.Namespace,
+				ColNames:  partData.Accumulator.GetColumnNames(),
+				ColTypes:  partData.Accumulator.GetColumnTypes(),
+			})
+			if err != nil {
+				return fmt.Errorf("error in InsertColumns: %w", err)
+			}
+			return nil
 		})
 		if err != nil {
 			return c.InternalError(err, "error inserting file")

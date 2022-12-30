@@ -51,6 +51,12 @@ func StartHTTPServer() *HTTPServer {
 	s.Echo.POST("/insert", ccHandler(s.InsertHandler))
 	s.Echo.POST("/merge", ccHandler(s.MergeHandler))
 
+	debugGroup := s.Echo.Group("/debug")
+	debugGroup.GET("/namespace", ccHandler(s.GetNamespaces))
+	//debugGroup.GET("/namespace/:ns")
+	debugGroup.GET("/namespace/:ns/columns", ccHandler(s.GetColumnsForNamespace))
+	//debugGroup.GET("/namespace/:ns/partitions")
+
 	s.Echo.Listener = listener
 	go func() {
 		logger.Info().Msg("starting h2c server on " + listener.Addr().String())

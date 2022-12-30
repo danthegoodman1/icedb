@@ -8,9 +8,16 @@ import (
 	"time"
 )
 
-type File struct {
+type Column struct {
 	Namespace string
+	Col       string
+	Type      string
+	CreatedAt time.Time
+}
+
+type File struct {
 	Enabled   bool
+	Namespace string
 	Partition string
 	Name      string
 	Bytes     int64
