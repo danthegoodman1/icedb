@@ -1,15 +1,6 @@
-# icedb
+# IceDB
 
-## Log Context
+## Optimization Opportunities
 
-The thing that gives logging a separate context is the function call:
-
-```go
-logger := gologger.NewLogger()
-// ...
-ctx = logger.WithContext(ctx)
-```
-
-Otherwise all logging will share the context (weird I know).
-
-From here you can use `logger := zerolog.Ctx(ctx)`
+1. Streaming Mutations
+2. Streaming inserts - break out the endpoints for different body formats and process rows one by one instead of loading entirely into memory every time

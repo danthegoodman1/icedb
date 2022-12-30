@@ -48,6 +48,7 @@ func StartHTTPServer() *HTTPServer {
 
 	// technical - no auth
 	s.Echo.GET("/hc", s.HealthCheck)
+	s.Echo.POST("/insert", ccHandler(s.InsertHandler))
 
 	s.Echo.Listener = listener
 	go func() {

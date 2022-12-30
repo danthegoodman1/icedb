@@ -11,6 +11,10 @@ env:
 
 tasks:
 
+  default:
+    cmds:
+    - go run .
+
   install-deps:
     cmds:
     - go install github.com/rubenv/sql-migrate/...@{{.sql_migrate_version}}
