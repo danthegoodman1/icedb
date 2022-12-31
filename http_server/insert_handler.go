@@ -113,6 +113,7 @@ func (s *HTTPServer) InsertHandler(c *CustomContext) error {
 			if err != nil {
 				return c.InternalError(err, "error flattening JSON map")
 			}
+			fmt.Printf("%+v\n", flat)
 			flatMap, ok := flat.(map[string]any)
 			if !ok {
 				return c.InternalError(ErrNotFlatMap, fmt.Sprintf("got a non flat map: %+v", flat))
@@ -166,7 +167,7 @@ func (s *HTTPServer) InsertHandler(c *CustomContext) error {
 			}
 			err = pw.Write(rowBytes)
 			if err != nil {
-				return c.InternalError(err, "error in pw.Write")
+				return c.InternalError(err, fmt.Sprintf("error in pw.Write for row %+v", string(rowBytes)))
 			}
 			numRows++
 		}
