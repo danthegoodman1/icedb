@@ -112,7 +112,6 @@ func parseTimeFuncfunc(row map[string]any, args []string) (t time.Time, err erro
 			return
 		}
 
-		var err error
 		if valString, isStr := value.(string); isStr {
 			// We have a datetime like YYYY-MM-DDTHH:mm:ss.sssZ
 			t, err = time.Parse("2006-01-02T15:04:05.000Z", valString)
