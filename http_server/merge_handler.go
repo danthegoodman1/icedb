@@ -5,10 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/danthegoodman1/icedb/crdb"
 	"github.com/danthegoodman1/icedb/parquet_accumulator"
 	"github.com/danthegoodman1/icedb/query"
@@ -17,7 +13,7 @@ import (
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/rs/zerolog"
-	s3_pq "github.com/xitongsys/parquet-go-source/s3"
+	"github.com/xitongsys/parquet-go-source/buffer"
 	"github.com/xitongsys/parquet-go/reader"
 	"github.com/xitongsys/parquet-go/writer"
 	"net/http"
@@ -113,45 +109,31 @@ func (s *HTTPServer) MergeHandler(c *CustomContext) error {
 	var bMerged bytes.Buffer
 	var flatRows []map[string]any
 
-	conf := &aws.Config{
-		Region:      aws.String(utils.AWS_DEFAULT_REGION),
-		Credentials: credentials.NewEnvCredentials(),
-	}
-	if utils.S3_ENDPOINT != "" {
-		conf.Endpoint = aws.String(utils.S3_ENDPOINT)
-	}
-
-	sess, err := session.NewSession(conf)
-	if err != nil {
-		return c.InternalError(err, "error making new aws session")
-	}
-
-	s3Client := s3.New(sess)
-
 	// Get files to merge
 	for _, file := range enabledFilesToMerge {
 		st := time.Now()
 		logger := logger.With().Str("fileName", file.Name).Str("partition", file.Partition).Logger()
 		logger.Debug().Msg("reading file from S3")
-		r, err := s3_pq.NewS3FileReaderWithParams(context.Background(), s3_pq.S3FileReaderParams{
-			Bucket:   utils.S3_BUCKET_NAME,
-			Key:      fmt.Sprintf("ns=%s/%s/%s", reqBody.Namespace, file.Partition, file.Name),
-			S3Client: s3Client,
-		})
+		b, err := s3_helper.ReadBytesFromS3(ctx, fmt.Sprintf("ns=%s/%s/%s", reqBody.Namespace, file.Partition, file.Name))
 		if err != nil {
-			return c.InternalError(err, "error creating new s3 file reader")
+			return c.InternalError(err, "error reading file from s3")
 		}
 
-		pr, err := reader.NewParquetReader(r, nil, 4)
+		buf := buffer.NewBufferFileFromBytes(b)
+		pr, err := reader.NewParquetReader(buf, nil, 4)
 		if err != nil {
 			return c.InternalError(err, "error creating parquet reader for file "+file.Name+" in namespace "+reqBody.Namespace)
 		}
+
 		logger.Debug().Msgf("got %d rows", pr.GetNumRows())
 		res.RowsMerged += pr.GetNumRows()
 		rows, err := pr.ReadByNumber(int(pr.GetNumRows()))
 		if err != nil {
+			pr.ReadStop()
 			return c.InternalError(err, "error reading rows for file "+file.Name+" in namespace "+reqBody.Namespace)
 		}
+		pr.ReadStop()
+
 		// Struct -> Map (not very efficient right now)
 		for _, row := range rows {
 			// row is a struct
@@ -164,6 +146,7 @@ func (s *HTTPServer) MergeHandler(c *CustomContext) error {
 			flatRows = append(flatRows, rowMap)
 			accumulator.WriteRow(rowMap)
 		}
+
 		res.FilesMerged++
 		logger.Debug().Msgf("read file to merge in %s", time.Since(st))
 	}
