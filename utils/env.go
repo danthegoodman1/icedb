@@ -11,4 +11,7 @@ var (
 
 	S3_BUCKET_NAME = os.Getenv("S3_BUCKET_NAME")
 	S3_ENDPOINT    = os.Getenv("S3_ENDPOINT")
+
+	USERNAME = os.Getenv("USERNAME")
+	PASSWORD = os.Getenv("PASSWORD")
 )

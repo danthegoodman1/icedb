@@ -2,6 +2,7 @@ package http_server
 
 import (
 	"context"
+	"crypto/subtle"
 	"errors"
 	"fmt"
 	"net"
@@ -48,6 +49,17 @@ func StartHTTPServer() *HTTPServer {
 
 	// technical - no auth
 	s.Echo.GET("/hc", s.HealthCheck)
+
+	if utils.USERNAME != "" && utils.PASSWORD != "" {
+		logger.Debug().Msg("using basic auth")
+		s.Echo.Use(middleware.BasicAuth(func(username, password string, c echo.Context) (bool, error) {
+			if subtle.ConstantTimeCompare([]byte(username), []byte(utils.USERNAME)) == 1 && subtle.ConstantTimeCompare([]byte(password), []byte(utils.PASSWORD)) == 1 {
+				return true, nil
+			}
+			return false, nil
+		}))
+	}
+
 	s.Echo.POST("/insert", ccHandler(s.InsertHandler))
 	s.Echo.POST("/merge", ccHandler(s.MergeHandler))
 
