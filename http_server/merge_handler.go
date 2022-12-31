@@ -173,6 +173,7 @@ func (s *HTTPServer) MergeHandler(c *CustomContext) error {
 	if err != nil {
 		return c.InternalError(err, "error getting schema string")
 	}
+	logger.Debug().Str("schema", parquetSchema).Msg("parquet schema")
 	pw, err := writer.NewJSONWriterFromWriter(parquetSchema, &bMerged, 4)
 	if err != nil {
 		return c.InternalError(err, "error creating new JSON writer")

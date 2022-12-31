@@ -143,3 +143,28 @@ func TestFullCycle(t *testing.T) {
 	pr.ReadStop()
 	fr.Close()
 }
+
+func TestArraySlice(t *testing.T) {
+	var c any
+	var a []*string
+	b := "hey"
+	a = append(a, &b)
+	c = a
+
+	reflectType := reflect.TypeOf(c)
+	if reflectType.Kind() == reflect.Ptr {
+		reflectType = reflectType.Elem()
+	}
+
+	if reflectType.Kind() != reflect.Slice {
+		fmt.Println("received item is not a slice")
+		return
+	}
+
+	val := reflect.ValueOf(c)
+
+	itemLength := val.Len()
+	for i := 0; i < itemLength; i++ {
+		fmt.Println(val.Index(i))
+	}
+}

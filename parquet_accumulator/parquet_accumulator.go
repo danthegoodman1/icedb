@@ -3,6 +3,7 @@ package parquet_accumulator
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strings"
 )
 
@@ -69,11 +70,19 @@ func (pa *ParquetSchemaAccumulator) getParquetSchema(key string, item any) *Parq
 			RepetitionType: Optional,
 		},
 	}
-	if itemArr, isArr := item.([]any); isArr {
+	reflectType := reflect.TypeOf(item)
+	if reflectType.Kind() == reflect.Ptr {
+		reflectType = reflectType.Elem()
+	}
+
+	if reflectType.Kind() == reflect.Slice {
+		val := reflect.ValueOf(item)
+
+		itemLength := val.Len()
 		var nonNilVal any = nil
-		for _, i := range itemArr {
-			if i != nil {
-				nonNilVal = i
+		for i := 0; i < itemLength; i++ {
+			if !val.IsNil() {
+				nonNilVal = val.Index(i)
 				break
 			}
 		}
@@ -81,7 +90,7 @@ func (pa *ParquetSchemaAccumulator) getParquetSchema(key string, item any) *Parq
 			return nil
 		}
 		schema.TagStructs.Type = "LIST"
-		schema.Fields = append(schema.Fields, pa.getParquetSchema("Element", itemArr[0]))
+		schema.Fields = append(schema.Fields, pa.getParquetSchema("Element", val.Index(0).Interface()))
 	} else if _, isStr := item.(string); isStr {
 		schema.TagStructs.Type = "BYTE_ARRAY"
 		schema.TagStructs.ConvertedType = "UTF8"
