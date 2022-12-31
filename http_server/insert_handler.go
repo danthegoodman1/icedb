@@ -113,7 +113,6 @@ func (s *HTTPServer) InsertHandler(c *CustomContext) error {
 			if err != nil {
 				return c.InternalError(err, "error flattening JSON map")
 			}
-			fmt.Printf("%+v\n", flat)
 			flatMap, ok := flat.(map[string]any)
 			if !ok {
 				return c.InternalError(ErrNotFlatMap, fmt.Sprintf("got a non flat map: %+v", flat))
