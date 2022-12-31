@@ -185,7 +185,7 @@ func (s *HTTPServer) MergeHandler(c *CustomContext) error {
 		}
 		err = pw.Write(rowBytes)
 		if err != nil {
-			return c.InternalError(err, "error in pw.Write")
+			return c.InternalError(err, fmt.Sprintf("error in pw.Write for row %+v", string(rowBytes)))
 		}
 	}
 	err = pw.WriteStop()
