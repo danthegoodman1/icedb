@@ -242,7 +242,7 @@ func (s *HTTPServer) MergeHandler(c *CustomContext) error {
 		return fmt.Errorf("error updating meta store: %w", err)
 	}
 
-	logger.Debug().Msgf("merged files in in %s", time.Since(st))
+	logger.Debug().Interface("response", res).Msg("merged files")
 
 	res.TimeMS = time.Since(start).Milliseconds()
 
