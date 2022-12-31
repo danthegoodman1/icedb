@@ -18,7 +18,7 @@ import (
 var logger = gologger.NewLogger()
 
 func main() {
-	logger.Debug().Msg("starting Tangia mono api")
+	logger.Debug().Msg("starting IceDB 🧊")
 
 	if err := crdb.ConnectToDB(); err != nil {
 		logger.Error().Err(err).Msg("error connecting to CRDB")
