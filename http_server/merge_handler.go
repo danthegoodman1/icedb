@@ -118,6 +118,7 @@ func (s *HTTPServer) MergeHandler(c *CustomContext) error {
 		if err != nil {
 			return c.InternalError(err, "error reading file from s3")
 		}
+		logger.Debug().Msgf("pulled file in %s", time.Since(st))
 
 		buf := buffer.NewBufferFileFromBytes(b)
 		pr, err := reader.NewParquetReader(buf, nil, 4)
