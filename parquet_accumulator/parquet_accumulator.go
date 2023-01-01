@@ -3,6 +3,7 @@ package parquet_accumulator
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/xitongsys/parquet-go/parquet"
 	"reflect"
 	"strings"
 )
@@ -31,6 +32,11 @@ type (
 	}
 
 	RepetitionType string
+
+	MergeParquetJSONSchema struct {
+		Tag    string                   `json:",omitempty"`
+		Fields []*parquet.SchemaElement `json:",omitempty"`
+	}
 )
 
 var (
@@ -193,4 +199,59 @@ func (pa *ParquetSchemaAccumulator) GetSchemaString() (string, error) {
 		return "", fmt.Errorf("error in json.Marshal: %w", err)
 	}
 	return string(b), nil
+}
+
+// ToParquetJSONSchema recursively converts
+func (ps *MergeParquetJSONSchema) toParquetJSONSchema(element *parquet.SchemaElement) *ParquetJSONSchema {
+	var tagArr []string
+	if element.Type != nil {
+		tagArr = append(tagArr, fmt.Sprintf("type=%s", element.Type))
+	}
+	if element.ConvertedType != nil {
+		tagArr = append(tagArr, fmt.Sprintf("convertedtype=%s", element.ConvertedType))
+	}
+	//if element.Encoding != nil {
+	//	tagArr = append(tagArr, fmt.Sprintf("encoding=%s", element.Encoding))
+	//}
+	if element.Name != "" {
+		tagArr = append(tagArr, fmt.Sprintf("name=%s", element.Name))
+	}
+	if element.RepetitionType != nil {
+		tagArr = append(tagArr, fmt.Sprintf("repetitiontype=%s", element.RepetitionType))
+	}
+	var fields []*ParquetJSONSchema
+	for _, field := range ps.Fields {
+		fields = append(fields, ps.toParquetJSONSchema(field))
+	}
+	return &ParquetJSONSchema{
+		Tag:    strings.Join(tagArr, ", "),
+		Fields: fields,
+	}
+}
+
+// GetSchemaString returns the JSON formatted schema string
+func (pa *MergeParquetJSONSchema) GetSchemaString() (string, error) {
+	// Generate the Tag string
+	var fields []*ParquetJSONSchema
+	for _, field := range pa.Fields {
+		fields = append(fields, pa.toParquetJSONSchema(field))
+	}
+	pjs := ParquetJSONSchema{
+		Tag:    "name=parquet_go_root, repetitiontype=REQUIRED",
+		Fields: fields,
+	}
+
+	b, err := json.Marshal(pjs)
+	if err != nil {
+		return "", fmt.Errorf("error in json.Marshal: %w", err)
+	}
+	return string(b), nil
+}
+
+func (pa *MergeParquetJSONSchema) GetColumnNames() []string {
+	var cols []string
+	for _, field := range pa.Fields {
+		cols = append(cols, field.Name)
+	}
+	return cols
 }

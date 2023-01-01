@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/rs/zerolog"
 	"github.com/xitongsys/parquet-go-source/buffer"
+	"github.com/xitongsys/parquet-go/parquet"
 	"github.com/xitongsys/parquet-go/reader"
 	"github.com/xitongsys/parquet-go/writer"
 	"net/http"
@@ -105,9 +106,11 @@ func (s *HTTPServer) MergeHandler(c *CustomContext) error {
 	}
 
 	// Start merging
-	accumulator := parquet_accumulator.NewParquetAccumulator()
 	var bMerged bytes.Buffer
 	var flatRows []map[string]any
+	mergeSchema := parquet_accumulator.MergeParquetJSONSchema{
+		Tag: "name=parquet_go_root, repetitiontype=REQUIRED",
+	}
 
 	// Get files to merge
 	for _, file := range enabledFilesToMerge {
@@ -133,6 +136,23 @@ func (s *HTTPServer) MergeHandler(c *CustomContext) error {
 			pr.ReadStop()
 			return c.InternalError(err, "error reading rows for file "+file.Name+" in namespace "+reqBody.Namespace)
 		}
+
+		// Merge the schema
+		var missingSchemaItems []*parquet.SchemaElement
+		for _, item := range pr.Footer.Schema {
+			found := false
+			for _, existing := range missingSchemaItems {
+				if existing.Name == item.Name {
+					found = true
+					break
+				}
+			}
+			if !found {
+				missingSchemaItems = append(missingSchemaItems, item)
+			}
+		}
+		mergeSchema.Fields = append(mergeSchema.Fields, missingSchemaItems...)
+
 		pr.ReadStop()
 
 		// Struct -> Map (not very efficient right now)
@@ -145,7 +165,6 @@ func (s *HTTPServer) MergeHandler(c *CustomContext) error {
 				rowMap[typeOf.Field(i).Name] = v.Field(i).Interface()
 			}
 			flatRows = append(flatRows, rowMap)
-			accumulator.WriteRow(rowMap)
 		}
 
 		res.FilesMerged++
@@ -153,7 +172,7 @@ func (s *HTTPServer) MergeHandler(c *CustomContext) error {
 	}
 
 	st = time.Now()
-	parquetSchema, err := accumulator.GetSchemaString()
+	parquetSchema, err := mergeSchema.GetSchemaString()
 	if err != nil {
 		return c.InternalError(err, "error getting schema string")
 	}
@@ -196,7 +215,7 @@ func (s *HTTPServer) MergeHandler(c *CustomContext) error {
 			Name:      fileName,
 			Bytes:     res.PostMergeBytes,
 			Rows:      res.RowsMerged,
-			Columns:   accumulator.GetColumnNames(),
+			Columns:   mergeSchema.GetColumnNames(),
 		})
 		if err != nil {
 			return fmt.Errorf("error in InsertFile: %w", err)
