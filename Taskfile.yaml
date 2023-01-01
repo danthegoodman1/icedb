@@ -61,3 +61,9 @@ tasks:
       - sqlc generate
       - rm schema.sql*
       - echo done
+
+  docker:
+    cmds:
+      - docker build . -t us-east1-docker.pkg.dev/twitchdata-370813/twitch-scraper/icedb:latest --ssh default
+      - gcloud auth configure-docker us-east1-docker.pkg.dev --account=$GCP_ACCOUNT
+      - docker push us-east1-docker.pkg.dev/twitchdata-370813/twitch-scraper/icedb:latest

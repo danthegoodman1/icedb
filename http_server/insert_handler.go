@@ -14,6 +14,7 @@ import (
 	"github.com/danthegoodman1/icedb/query"
 	"github.com/danthegoodman1/icedb/s3_helper"
 	"github.com/danthegoodman1/icedb/utils"
+	"github.com/jackc/pgtype"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/xitongsys/parquet-go/writer"
 	"net/http"
@@ -185,17 +186,29 @@ func (s *HTTPServer) InsertHandler(c *CustomContext) error {
 			return c.InternalError(err, "error uploading to s3")
 		}
 
+		accuBytes, err := json.Marshal(partData.Accumulator)
+		if err != nil {
+			return c.InternalError(err, "error marshalling accumulator")
+		}
+
+		var accuJSON pgtype.JSONB
+		err = accuJSON.Set(accuBytes)
+		if err != nil {
+			return c.InternalError(err, "error setting accumulator json bytes")
+		}
+
 		err = utils.ReliableExec(ctx, crdb.PGPool, time.Second*10, func(ctx context.Context, conn *pgxpool.Conn) error {
 			q := query.New(conn)
 			// Insert file metadata
 			err := q.InsertFile(ctx, query.InsertFileParams{
-				Namespace: reqBody.Namespace,
-				Enabled:   true,
-				Partition: partID,
-				Name:      fileName,
-				Bytes:     int64(byteLen),
-				Rows:      int64(len(partData.Rows)),
-				Columns:   partData.Accumulator.GetColumnNames(),
+				Namespace:  reqBody.Namespace,
+				Enabled:    true,
+				Partition:  partID,
+				Name:       fileName,
+				Bytes:      int64(byteLen),
+				Rows:       int64(len(partData.Rows)),
+				Columns:    partData.Accumulator.GetColumnNames(),
+				JsonSchema: accuJSON,
 			})
 			if err != nil {
 				return fmt.Errorf("error in InsertFile: %w", err)

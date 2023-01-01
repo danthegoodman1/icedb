@@ -6,6 +6,8 @@ package query
 
 import (
 	"time"
+
+	"github.com/jackc/pgtype"
 )
 
 type Column struct {
@@ -16,13 +18,14 @@ type Column struct {
 }
 
 type File struct {
-	Enabled   bool
-	Namespace string
-	Partition string
-	Name      string
-	Bytes     int64
-	Rows      int64
-	Columns   []string
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	Enabled    bool
+	Namespace  string
+	Partition  string
+	Name       string
+	Bytes      int64
+	Rows       int64
+	Columns    []string
+	JsonSchema pgtype.JSONB
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
 }

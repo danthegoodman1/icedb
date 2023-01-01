@@ -8,6 +8,8 @@ package query
 import (
 	"context"
 	"time"
+
+	"github.com/jackc/pgtype"
 )
 
 const getAllEnabledFiles = `-- name: GetAllEnabledFiles :many
@@ -50,7 +52,8 @@ INSERT INTO files (
     rows,
     columns,
     partition,
-    name
+    name,
+    json_schema
 ) VALUES (
     $1,
     $2,
@@ -58,18 +61,20 @@ INSERT INTO files (
     $4,
     $5,
     $6,
-    $7
+    $7,
+    $8
 )
 `
 
 type InsertFileParams struct {
-	Namespace string
-	Enabled   bool
-	Bytes     int64
-	Rows      int64
-	Columns   []string
-	Partition string
-	Name      string
+	Namespace  string
+	Enabled    bool
+	Bytes      int64
+	Rows       int64
+	Columns    []string
+	Partition  string
+	Name       string
+	JsonSchema pgtype.JSONB
 }
 
 func (q *Queries) InsertFile(ctx context.Context, arg InsertFileParams) error {
@@ -81,6 +86,7 @@ func (q *Queries) InsertFile(ctx context.Context, arg InsertFileParams) error {
 		arg.Columns,
 		arg.Partition,
 		arg.Name,
+		arg.JsonSchema,
 	)
 	return err
 }
@@ -97,7 +103,7 @@ WITH eligible_files AS (
     ORDER BY partition ASC
     LIMIT 1
 )
-SELECT enabled, namespace, files.partition, name, bytes, rows, columns, created_at, updated_at, cnt, eligible_files.partition
+SELECT enabled, namespace, files.partition, name, bytes, rows, columns, json_schema, created_at, updated_at, cnt, eligible_files.partition
 FROM files
 JOIN eligible_files ON eligible_files.partition = files.partition
 WHERE files.namespace = $1
@@ -121,6 +127,7 @@ type SelectFilesForMergingRow struct {
 	Bytes       int64
 	Rows        int64
 	Columns     []string
+	JsonSchema  pgtype.JSONB
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 	Cnt         int64
@@ -144,6 +151,7 @@ func (q *Queries) SelectFilesForMerging(ctx context.Context, arg SelectFilesForM
 			&i.Bytes,
 			&i.Rows,
 			&i.Columns,
+			&i.JsonSchema,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.Cnt,

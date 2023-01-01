@@ -13,7 +13,8 @@ INSERT INTO files (
     rows,
     columns,
     partition,
-    name
+    name,
+    json_schema
 ) VALUES (
     @namespace,
     @enabled,
@@ -21,7 +22,8 @@ INSERT INTO files (
     @rows,
     @columns,
     @partition,
-    @name
+    @name,
+    @json_schema
 )
 ;
 
