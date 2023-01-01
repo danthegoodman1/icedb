@@ -41,7 +41,7 @@ func TestGetSchemaString(t *testing.T) {
 	}
 	if schemaString != `{"Tag":"name=parquet_go_root, repetitiontype=REQUIRED","Fields":[{"Tag":"type=BYTE_ARRAY, convertedtype=UTF8, encoding=PLAIN, name=colA, repetitiontype=OPTIONAL"},{"Tag":"type=DOUBLE, name=colB, repetitiontype=OPTIONAL"},{"Tag":"type=LIST, name=colC, repetitiontype=OPTIONAL","Fields":[{"Tag":"type=BYTE_ARRAY, convertedtype=UTF8, encoding=PLAIN, name=Element, repetitiontype=OPTIONAL"}]}]}` {
 		t.Log(schemaString)
-		t.Fatal("got incorrect schema string")
+		t.Fatal("got incorrect Schema string")
 	}
 
 }

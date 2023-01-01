@@ -10,6 +10,8 @@ CREATE TABLE files (
     rows INT8 NOT NULL,
     columns TEXT[] NOT NULL,
 
+    json_schema JSONB NOT NULL,
+
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 

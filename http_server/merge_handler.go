@@ -7,14 +7,14 @@ import (
 	"fmt"
 	"github.com/danthegoodman1/icedb/crdb"
 	"github.com/danthegoodman1/icedb/parquet_accumulator"
+	"github.com/danthegoodman1/icedb/pq_byte_reader"
 	"github.com/danthegoodman1/icedb/query"
 	"github.com/danthegoodman1/icedb/s3_helper"
 	"github.com/danthegoodman1/icedb/utils"
+	"github.com/jackc/pgtype"
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/rs/zerolog"
-	"github.com/xitongsys/parquet-go-source/buffer"
-	"github.com/xitongsys/parquet-go/parquet"
 	"github.com/xitongsys/parquet-go/reader"
 	"github.com/xitongsys/parquet-go/writer"
 	"net/http"
@@ -108,9 +108,7 @@ func (s *HTTPServer) MergeHandler(c *CustomContext) error {
 	// Start merging
 	var bMerged bytes.Buffer
 	var flatRows []map[string]any
-	mergeSchema := parquet_accumulator.MergeParquetJSONSchema{
-		Tag: "name=parquet_go_root, repetitiontype=REQUIRED",
-	}
+	mergeAccumulator := parquet_accumulator.NewParquetAccumulator()
 
 	// Get files to merge
 	for _, file := range enabledFilesToMerge {
@@ -123,35 +121,44 @@ func (s *HTTPServer) MergeHandler(c *CustomContext) error {
 		}
 		logger.Debug().Msgf("pulled file in %s", time.Since(st))
 
-		buf := buffer.NewBufferFileFromBytes(b)
+		buf := pq_byte_reader.NewBufferFileFromBytes(b)
 		pr, err := reader.NewParquetReader(buf, nil, 4)
 		if err != nil {
 			return c.InternalError(err, "error creating parquet reader for file "+file.Name+" in namespace "+reqBody.Namespace)
 		}
 
-		logger.Debug().Msgf("got %d rows", pr.GetNumRows())
+		logger.Debug().Msgf("new reader in %s", time.Since(st))
+
 		res.RowsMerged += pr.GetNumRows()
 		rows, err := pr.ReadByNumber(int(pr.GetNumRows()))
 		if err != nil {
 			pr.ReadStop()
 			return c.InternalError(err, "error reading rows for file "+file.Name+" in namespace "+reqBody.Namespace)
 		}
+		logger.Debug().Msgf("got %d rows in %s", pr.GetNumRows(), time.Since(st))
+
+		// Get the schema
+		var tempAccumulator parquet_accumulator.ParquetSchemaAccumulator
+		err = json.Unmarshal(file.JsonSchema.Bytes, &tempAccumulator)
+		if err != nil {
+			return c.InternalError(err, "error unmarshalling temp accumulator")
+		}
 
 		// Merge the schema
-		var missingSchemaItems []*parquet.SchemaElement
-		for _, item := range pr.Footer.Schema {
+		for _, item := range tempAccumulator.Schema.Fields {
 			found := false
-			for _, existing := range missingSchemaItems {
-				if existing.Name == item.Name {
+			for _, existing := range mergeAccumulator.Schema.Fields {
+				if existing.TagStructs.Name == item.TagStructs.Name {
 					found = true
 					break
 				}
 			}
 			if !found {
-				missingSchemaItems = append(missingSchemaItems, item)
+				mergeAccumulator.Schema.Fields = append(mergeAccumulator.Schema.Fields, item)
 			}
 		}
-		mergeSchema.Fields = append(mergeSchema.Fields, missingSchemaItems...)
+
+		logger.Debug().Msgf("merged schema in %s", time.Since(st))
 
 		pr.ReadStop()
 
@@ -172,7 +179,7 @@ func (s *HTTPServer) MergeHandler(c *CustomContext) error {
 	}
 
 	st = time.Now()
-	parquetSchema, err := mergeSchema.GetSchemaString()
+	parquetSchema, err := mergeAccumulator.GetSchemaString()
 	if err != nil {
 		return c.InternalError(err, "error getting schema string")
 	}
@@ -205,17 +212,29 @@ func (s *HTTPServer) MergeHandler(c *CustomContext) error {
 		return c.InternalError(err, "error uploading to s3")
 	}
 
+	accuBytes, err := json.Marshal(mergeAccumulator)
+	if err != nil {
+		return c.InternalError(err, "error marshalling accumulator")
+	}
+
+	var accuJSON pgtype.JSONB
+	err = accuJSON.Set(accuBytes)
+	if err != nil {
+		return c.InternalError(err, "error setting accumulator json bytes")
+	}
+
 	// Update meta store
 	err = utils.ReliableExecInTx(ctx, crdb.PGPool, time.Second*time.Duration(utils.Deref(reqBody.MaxRuntimeSec, 60)), func(ctx context.Context, conn pgx.Tx) error {
 		q := query.New(conn)
 		err := q.InsertFile(ctx, query.InsertFileParams{
-			Namespace: reqBody.Namespace,
-			Enabled:   true,
-			Partition: enabledFilesToMerge[0].Partition,
-			Name:      fileName,
-			Bytes:     res.PostMergeBytes,
-			Rows:      res.RowsMerged,
-			Columns:   mergeSchema.GetColumnNames(),
+			Namespace:  reqBody.Namespace,
+			Enabled:    true,
+			Partition:  enabledFilesToMerge[0].Partition,
+			Name:       fileName,
+			Bytes:      res.PostMergeBytes,
+			Rows:       res.RowsMerged,
+			Columns:    mergeAccumulator.GetColumnNames(),
+			JsonSchema: accuJSON,
 		})
 		if err != nil {
 			return fmt.Errorf("error in InsertFile: %w", err)

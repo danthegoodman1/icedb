@@ -10,11 +10,11 @@ import (
 
 type (
 	ParquetSchemaAccumulator struct {
-		schema ParquetSchema
+		Schema ParquetSchema
 	}
 
 	ParquetSchema struct {
-		TagStructs SchemaTag        `json:"-,omitempty"`
+		TagStructs SchemaTag        `json:",omitempty"`
 		Fields     []*ParquetSchema `json:",omitempty"`
 	}
 
@@ -46,7 +46,7 @@ var (
 
 func NewParquetAccumulator() ParquetSchemaAccumulator {
 	return ParquetSchemaAccumulator{
-		schema: ParquetSchema{
+		Schema: ParquetSchema{
 			TagStructs: SchemaTag{
 				Name:           "parquet_go_root",
 				RepetitionType: Required,
@@ -56,14 +56,14 @@ func NewParquetAccumulator() ParquetSchemaAccumulator {
 }
 
 func (pa *ParquetSchemaAccumulator) WriteRow(row map[string]any) {
-	// Accumulate the schema
+	// Accumulate the Schema
 	for key, val := range row {
 		if pa.fieldExists(key) {
 			continue
 		}
 		rowSchema := pa.getParquetSchema(key, val)
 		if rowSchema != nil {
-			pa.schema.Fields = append(pa.schema.Fields, rowSchema)
+			pa.Schema.Fields = append(pa.Schema.Fields, rowSchema)
 		}
 	}
 }
@@ -114,7 +114,7 @@ func (pa *ParquetSchemaAccumulator) getParquetSchema(key string, item any) *Parq
 }
 
 func (pa *ParquetSchemaAccumulator) fieldExists(fieldName string) (exists bool) {
-	for _, field := range pa.schema.Fields {
+	for _, field := range pa.Schema.Fields {
 		if field.TagStructs.Name == fieldName {
 			return true
 		}
@@ -124,7 +124,7 @@ func (pa *ParquetSchemaAccumulator) fieldExists(fieldName string) (exists bool) 
 
 func (pa *ParquetSchemaAccumulator) GetColumnNames() []string {
 	var cols []string
-	for _, field := range pa.schema.Fields {
+	for _, field := range pa.Schema.Fields {
 		cols = append(cols, field.TagStructs.Name)
 	}
 	return cols
@@ -148,7 +148,7 @@ func (ps *ParquetSchema) GetType() string {
 // GetColumnTypes returns the types of columns in the same order, either `string`, `float`, or `list(x)` (recursive0
 func (pa *ParquetSchemaAccumulator) GetColumnTypes() []string {
 	var cols []string
-	for _, field := range pa.schema.Fields {
+	for _, field := range pa.Schema.Fields {
 		cols = append(cols, field.GetType())
 	}
 	return cols
@@ -182,11 +182,11 @@ func (ps *ParquetSchema) ToParquetJSONSchema() *ParquetJSONSchema {
 	}
 }
 
-// GetSchemaString returns the JSON formatted schema string
+// GetSchemaString returns the JSON formatted Schema string
 func (pa *ParquetSchemaAccumulator) GetSchemaString() (string, error) {
 	// Generate the Tag string
 	var fields []*ParquetJSONSchema
-	for _, field := range pa.schema.Fields {
+	for _, field := range pa.Schema.Fields {
 		fields = append(fields, field.ToParquetJSONSchema())
 	}
 	pjs := ParquetJSONSchema{
@@ -201,57 +201,71 @@ func (pa *ParquetSchemaAccumulator) GetSchemaString() (string, error) {
 	return string(b), nil
 }
 
-// ToParquetJSONSchema recursively converts
-func (ps *MergeParquetJSONSchema) toParquetJSONSchema(element *parquet.SchemaElement) *ParquetJSONSchema {
-	var tagArr []string
-	if element.Type != nil {
-		tagArr = append(tagArr, fmt.Sprintf("type=%s", element.Type))
-	}
-	if element.ConvertedType != nil {
-		tagArr = append(tagArr, fmt.Sprintf("convertedtype=%s", element.ConvertedType))
-	}
-	//if element.Encoding != nil {
-	//	tagArr = append(tagArr, fmt.Sprintf("encoding=%s", element.Encoding))
-	//}
-	if element.Name != "" {
-		tagArr = append(tagArr, fmt.Sprintf("name=%s", element.Name))
-	}
-	if element.RepetitionType != nil {
-		tagArr = append(tagArr, fmt.Sprintf("repetitiontype=%s", element.RepetitionType))
-	}
-	var fields []*ParquetJSONSchema
-	for _, field := range ps.Fields {
-		fields = append(fields, ps.toParquetJSONSchema(field))
-	}
-	return &ParquetJSONSchema{
-		Tag:    strings.Join(tagArr, ", "),
-		Fields: fields,
-	}
-}
-
-// GetSchemaString returns the JSON formatted schema string
-func (pa *MergeParquetJSONSchema) GetSchemaString() (string, error) {
-	// Generate the Tag string
-	var fields []*ParquetJSONSchema
-	for _, field := range pa.Fields {
-		fields = append(fields, pa.toParquetJSONSchema(field))
-	}
-	pjs := ParquetJSONSchema{
-		Tag:    "name=parquet_go_root, repetitiontype=REQUIRED",
-		Fields: fields,
-	}
-
-	b, err := json.Marshal(pjs)
-	if err != nil {
-		return "", fmt.Errorf("error in json.Marshal: %w", err)
-	}
-	return string(b), nil
-}
-
-func (pa *MergeParquetJSONSchema) GetColumnNames() []string {
-	var cols []string
-	for _, field := range pa.Fields {
-		cols = append(cols, field.Name)
-	}
-	return cols
-}
+//// ToParquetJSONSchema recursively converts
+//func (ps *MergeParquetJSONSchema) toParquetJSONSchema(element *parquet.SchemaElement) *ParquetJSONSchema {
+//	var tagArr []string
+//	if element.Type != nil {
+//		tagArr = append(tagArr, fmt.Sprintf("type=%s", element.Type))
+//	}
+//	if element.ConvertedType != nil {
+//		tagArr = append(tagArr, fmt.Sprintf("convertedtype=%s", element.ConvertedType))
+//	}
+//	//if element.Encoding != nil {
+//	//	tagArr = append(tagArr, fmt.Sprintf("encoding=%s", element.Encoding))
+//	//}
+//	if element.Name != "" {
+//		tagArr = append(tagArr, fmt.Sprintf("name=%s", element.Name))
+//	}
+//	if element.RepetitionType != nil {
+//		tagArr = append(tagArr, fmt.Sprintf("repetitiontype=%s", element.RepetitionType))
+//	}
+//	var fields []*ParquetJSONSchema
+//	for _, field := range ps.Fields {
+//		fields = append(fields, ps.toParquetJSONSchema(field))
+//	}
+//	return &ParquetJSONSchema{
+//		Tag:    strings.Join(tagArr, ", "),
+//		Fields: fields,
+//	}
+//}
+//
+//func (mps *MergeParquetJSONSchema) toParquetSchema() *ParquetSchema {
+//	ps := ParquetSchema{
+//		TagStructs: SchemaTag{
+//			Name:           "parquet_go_root",
+//			RepetitionType: Required,
+//		},
+//	}
+//	for _, field := range mps.Fields {
+//		field.
+//			fields = append(fields, pa.toParquetJSONSchema(field))
+//	}
+//}
+//
+//// GetSchemaString returns the JSON formatted Schema string
+//func (pa *MergeParquetJSONSchema) GetSchemaString() (string, error) {
+//	// Generate the Tag string
+//	var fields []*ParquetJSONSchema
+//	fmt.Printf("%+v", pa)
+//	for _, field := range pa.Fields {
+//		fields = append(fields, pa.toParquetJSONSchema(field))
+//	}
+//	pjs := ParquetJSONSchema{
+//		Tag:    "name=parquet_go_root, repetitiontype=REQUIRED",
+//		Fields: fields,
+//	}
+//
+//	b, err := json.Marshal(pjs)
+//	if err != nil {
+//		return "", fmt.Errorf("error in json.Marshal: %w", err)
+//	}
+//	return string(b), nil
+//}
+//
+//func (pa *MergeParquetJSONSchema) GetColumnNames() []string {
+//	var cols []string
+//	for _, field := range pa.Fields {
+//		cols = append(cols, field.Name)
+//	}
+//	return cols
+//}
