@@ -33,7 +33,7 @@ example_events = [{
     "event": "page_load",
     "user_id": "b",
     "properties": {
-        "hey": "ho",
+        "hey": "hoergergergrergereg",
         "numtime": 933,
         "nested_dict": {
             "ee": "fff"
@@ -168,10 +168,25 @@ def merge_files(maxFileSize, asc=False):
     slowly fully optimizes partitions over time.
     '''
     # cursor scan active files in the direction
+    curid = str(uuid4())
+    mycur = conn.cursor(curid)
+    q = '''
+    select partition, filename, filesize
+    from known_files
+    where active = true
+    and filesize < {}
+    order by partition {}
+    '''.format(maxFileSize, 'asc' if asc else 'desc')
+    mycur.itersize = 500 # get 500 files at a time
+    mycur.execute(q)
+    for row in mycur:
+        print(row)
+        # parse the rows
 
     # select the files for update to make sure they are all still active, anything not active we drop (from colliding merges)
 
     # merge these files, update DB
+    mycur.close()
     pass
 
 final_files = insertRows(example_events)
