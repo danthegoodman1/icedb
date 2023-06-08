@@ -60,7 +60,7 @@ cursor.execute('''
         filename TEXT NOT NULL,
         filesize INT8 NOT NULL,
         active BOOLEAN NOT NULL DEFAULT TRUE,
-        PRIMARY KEY(partition, filename)
+        PRIMARY KEY(active, partition, filename)
     )
 ''')
 conn.commit()
@@ -167,6 +167,12 @@ def merge_files(maxFileSize, asc=False):
     desc merge should be fast, working on active partitions. asc merge should be slow and in background,
     slowly fully optimizes partitions over time.
     '''
+    # cursor scan active files in the direction
+
+    # select the files for update to make sure they are all still active, anything not active we drop (from colliding merges)
+
+    # merge these files, update DB
+    pass
 
 final_files = insertRows(example_events)
 print('inserted files', final_files)
@@ -177,7 +183,8 @@ select count(*) as num_active_files
 from UNNEST(get_f(end_year:=2024))
 '''))
 
-print("after merge:")
+# merge files
+merge_files(100_000)
 
 print(ddb.sql('''
 select count(*) as num_active_files_after_merge
@@ -189,7 +196,7 @@ from UNNEST(get_f(end_year:=2024))
 # query files
 print(ddb.sql('''
     select sum((properties::JSON->>'numtime')::int64)
-    from read_parquet(get_f(start_month:=2, end_month:=8), hive_partitioning=1, filename=1)
+    from read_parquet(get_f(start_month:=2, end_month:=8), hive_partitioning=1)
     where event = 'page_load'
 '''))
 
