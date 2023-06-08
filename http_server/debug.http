@@ -1,5 +1,0 @@
-### List namespaces
-GET http://localhost:8080/debug/namespace
-
-### List columns for namespace
-GET http://localhost:8080/debug/namespace/testns/columns
