@@ -7,6 +7,8 @@ import json
 import pyarrow as pa
 import duckdb.typing as ty
 import psycopg2
+import boto3
+import botocore
 
 conn = psycopg2.connect(
     host="localhost",
@@ -56,6 +58,7 @@ cursor.execute('''
     create table if not exists known_files (
         d DATE NOT NULL,
         filename TEXT NOT NULL,
+        filesize INT8 NOT NULL,
         active BOOLEAN NOT NULL DEFAULT TRUE,
         PRIMARY KEY(d, filename)
     )
@@ -87,6 +90,15 @@ ddb.execute('''
 SET s3_url_style='path'
 ''')
 
+session = boto3.session.Session()
+s3 = session.client('s3',
+    config=botocore.config.Config(s3={'addressing_style': 'path'}),
+    region_name='us-east-1',
+    endpoint_url='http://localhost:9000',
+    aws_access_key_id='x20QiZlFwUh66jUj3GuT',
+    aws_secret_access_key='OJGdsO363fFQo0DFYeula4JJdCLAmVWZWJnPy4IG'
+)
+
 def insertRows(rows: List[dict]):
     partmap = {}
     for row in rows:
@@ -115,11 +127,18 @@ def insertRows(rows: List[dict]):
             copy (select * from df order by event, ts) to '{}'
         '''.format('s3://testbucket/' + fullpath)) # order by event, then ts as we are probably grabbing a single event for each query
 
+        # get file metadata
+        obj = s3.head_object(
+            Bucket='testbucket',
+            Key=fullpath
+        )
+        fileSize = obj['ContentLength']
+
         # insert into meta store
         rowTime = datetime.utcfromtimestamp(partrows[0]['ts'] / 1000) # this is janky
         cursor.execute('''
-            insert into known_files (d, filename)  VALUES ('{}-{}-{}', '{}')
-        '''.format(rowTime.year, rowTime.month, rowTime.day, filename))
+            insert into known_files (d, filename, filesize)  VALUES ('{}-{}-{}', '{}', {})
+        '''.format(rowTime.year, rowTime.month, rowTime.day, filename, fileSize))
         conn.commit()
 
     return final_files
@@ -145,12 +164,22 @@ ddb.sql('''
     create macro if not exists get_f(start_year:=2023, start_month:=1, start_day:=1, end_year:=2023, end_month:=1, end_day:=1) as get_files(start_year, start_month, start_day, end_year, end_month, end_day)
 ''')
 
+# def merge_files():
+#     # find files that can be merged
+
 final_files = insertRows(example_events)
 print('inserted files', final_files)
 
 # show what it looks like
 print(ddb.sql('''
-select count(*)
+select count(*) as num_active_files
+from UNNEST(get_f(end_year:=2024))
+'''))
+
+print("after merge:")
+
+print(ddb.sql('''
+select count(*) as num_active_files_after_merge
 from UNNEST(get_f(end_year:=2024))
 '''))
 
@@ -162,6 +191,5 @@ print(ddb.sql('''
     from read_parquet(get_f(start_month:=2, end_month:=8), hive_partitioning=1, filename=1)
     where event = 'page_load'
 '''))
-
 
 cursor.close()
