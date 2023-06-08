@@ -90,6 +90,7 @@ def insertRows(rows: List[dict]):
     return final_files
 
 def get_files(year: int, month: int, day: int) -> list[str]:
+    # can't use duckdb here otherwise the db will lock up due to nested queries
   raw_files = os.listdir('files/y={}/m={}/d={}/'.format('{}'.format(year).zfill(4), '{}'.format(month).zfill(2), '{}'.format(day).zfill(2)))
   return list(map(lambda x: 'files/y={}/m={}/d={}/{}'.format('{}'.format(year).zfill(4), '{}'.format(month).zfill(2), '{}'.format(day).zfill(2), x), raw_files))
 
