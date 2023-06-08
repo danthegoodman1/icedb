@@ -1,17 +1,24 @@
 import os
-from typing import List, Callable
-import time
+from typing import List
 from datetime import datetime
 from uuid import uuid4
 import duckdb
-import pandas as pd
 import json
 import pyarrow as pa
 import duckdb.typing as ty
+import psycopg2
+
+conn = psycopg2.connect(
+    host="localhost",
+    port=26257,
+    user="root",
+    database="defaultdb"
+)
 
 example_events = [{
     "ts": 1686176939445,
     "event": "page_load",
+    "user_id": "a",
     "properties": {
         "hey": "ho",
         "numtime": 123,
@@ -22,6 +29,7 @@ example_events = [{
 }, {
     "ts": 1676126229999,
     "event": "page_load",
+    "user_id": "b",
     "properties": {
         "hey": "ho",
         "numtime": 933,
@@ -32,6 +40,7 @@ example_events = [{
 }, {
     "ts": 1686176939666,
     "event": "something_else",
+    "user_id": "a",
     "properties": {
         "hey": "ho",
         "numtime": 222,
@@ -41,16 +50,41 @@ example_events = [{
     }
 }]
 
-ddb = duckdb.connect("ddb")
-ddb.execute('''
+ddb = duckdb.connect(":memory:")
+cursor = conn.cursor()
+cursor.execute('''
     create table if not exists known_files (
-        year TEXT NOT NULL,
-        month TEXT NOT NULL,
-        day TEXT NOT NULL,
+        d DATE NOT NULL,
         filename TEXT NOT NULL,
         active BOOLEAN NOT NULL DEFAULT TRUE,
-        PRIMARY KEY(year, month, day, filename)
+        PRIMARY KEY(d, filename)
     )
+''')
+conn.commit()
+
+ddb.execute('''
+install httpfs
+''')
+ddb.execute('''
+load httpfs
+''')
+ddb.execute('''
+SET s3_region='us-east-1'
+''')
+ddb.execute('''
+SET s3_access_key_id='x20QiZlFwUh66jUj3GuT'
+''')
+ddb.execute('''
+SET s3_secret_access_key='OJGdsO363fFQo0DFYeula4JJdCLAmVWZWJnPy4IG'
+''')
+ddb.execute('''
+SET s3_endpoint='localhost:9000'
+''')
+ddb.execute('''
+SET s3_use_ssl=false
+''')
+ddb.execute('''
+SET s3_url_style='path'
 ''')
 
 def insertRows(rows: List[dict]):
@@ -70,7 +104,7 @@ def insertRows(rows: List[dict]):
         fullpath = part + filename
         final_files.append(fullpath)
         partrows = partmap[part]
-        # let's just make it a df to make things easy
+        # use a DF for inserting into duckdb
         df = pa.Table.from_pydict({
             'ts': map(lambda row: row['ts'], partrows),
             'event': map(lambda row: row['event'], partrows),
@@ -79,34 +113,55 @@ def insertRows(rows: List[dict]):
         })
         ddb.sql('''
             copy (select * from df order by event, ts) to '{}'
-        '''.format('files/' + fullpath)) # order by event, then ts as we are probably grabbing a single event for each query
+        '''.format('s3://testbucket/' + fullpath)) # order by event, then ts as we are probably grabbing a single event for each query
 
         # insert into meta store
         rowTime = datetime.utcfromtimestamp(partrows[0]['ts'] / 1000) # this is janky
-        ddb.execute('''
-            insert into known_files (year, month, day, filename)  VALUES (?, ?, ?, ?)
-        ''', ['{}'.format(rowTime.year).zfill(4), '{}'.format(rowTime.month).zfill(2), '{}'.format(rowTime.day).zfill(2), filename])
+        cursor.execute('''
+            insert into known_files (d, filename)  VALUES ('{}-{}-{}', '{}')
+        '''.format(rowTime.year, rowTime.month, rowTime.day, filename))
+        conn.commit()
 
     return final_files
 
-def get_files(year: int, month: int, day: int) -> list[str]:
+def get_files(syear: int, smonth: int, sday: int, eyear: int, emonth: int, eday: int) -> list[str]:
     # can't use duckdb here otherwise the db will lock up due to nested queries
-  raw_files = os.listdir('files/y={}/m={}/d={}/'.format('{}'.format(year).zfill(4), '{}'.format(month).zfill(2), '{}'.format(day).zfill(2)))
-  return list(map(lambda x: 'files/y={}/m={}/d={}/{}'.format('{}'.format(year).zfill(4), '{}'.format(month).zfill(2), '{}'.format(day).zfill(2), x), raw_files))
+    startDate = datetime(year=syear, month=smonth, day=sday)
+    endDate = datetime(year=eyear, month=emonth, day=eday)
+    q = '''
+    select d, filename
+    from known_files
+    where active = true
+    AND d >= '{}-{}-{}'
+    AND d <= '{}-{}-{}'
+    '''.format(startDate.year, startDate.month, startDate.day, endDate.year, endDate.month, endDate.day)
+    cursor.execute(q)
+    rows = cursor.fetchall()
+    return list(map(lambda x: 's3://testbucket/y={}/m={}/d={}/{}'.format('{}'.format(x[0].year).zfill(4), '{}'.format(x[0].month).zfill(2), '{}'.format(x[0].day).zfill(2), x[1]), rows))
 
-ddb.create_function('get_files', get_files, [ty.INTEGER, ty.INTEGER, ty.INTEGER], list[str])
+ddb.create_function('get_files', get_files, [ty.INTEGER, ty.INTEGER, ty.INTEGER, ty.INTEGER, ty.INTEGER, ty.INTEGER], list[str])
 
+ddb.sql('''
+    create macro if not exists get_f(start_year:=2023, start_month:=1, start_day:=1, end_year:=2023, end_month:=1, end_day:=1) as get_files(start_year, start_month, start_day, end_year, end_month, end_day)
+''')
 
 final_files = insertRows(example_events)
 print('inserted files', final_files)
-print(ddb.sql('''
-    select * from read_parquet('files/**', hive_partitioning=1, filename=1)
-'''))
-# merging is omitted for this demo, as it's a pretty simple
 
-# normally this would be a time range, but for poc it's easier to not have to calculate that
+# show what it looks like
+print(ddb.sql('''
+select count(*)
+from UNNEST(get_f(end_year:=2024))
+'''))
+
+# merge files
+
+# query files
 print(ddb.sql('''
     select sum((properties::JSON->>'numtime')::int64)
-    from read_parquet(get_files(2023, 6, 7), hive_partitioning=1, filename=1)
+    from read_parquet(get_f(start_month:=2, end_month:=8), hive_partitioning=1, filename=1)
     where event = 'page_load'
 '''))
+
+
+cursor.close()
