@@ -56,11 +56,11 @@ ddb = duckdb.connect(":memory:")
 cursor = conn.cursor()
 cursor.execute('''
     create table if not exists known_files (
-        d DATE NOT NULL,
+        partition TEXT NOT NULL,
         filename TEXT NOT NULL,
         filesize INT8 NOT NULL,
         active BOOLEAN NOT NULL DEFAULT TRUE,
-        PRIMARY KEY(d, filename)
+        PRIMARY KEY(partition, filename)
     )
 ''')
 conn.commit()
@@ -104,7 +104,7 @@ def insertRows(rows: List[dict]):
     for row in rows:
         # merge the rows into same parts
         rowTime = datetime.utcfromtimestamp(row['ts']/1000)
-        part = 'y={}/m={}/d={}/'.format('{}'.format(rowTime.year).zfill(4), '{}'.format(rowTime.month).zfill(2), '{}'.format(rowTime.day).zfill(2))
+        part = 'y={}/m={}/d={}'.format('{}'.format(rowTime.year).zfill(4), '{}'.format(rowTime.month).zfill(2), '{}'.format(rowTime.day).zfill(2))
         if part not in partmap:
             partmap[part] = []
         partmap[part].append(row)
@@ -113,7 +113,7 @@ def insertRows(rows: List[dict]):
     for part in partmap:
         # upload parquet file
         filename = '{}.parquet'.format(uuid4())
-        fullpath = part + filename
+        fullpath = part + '/' + filename
         final_files.append(fullpath)
         partrows = partmap[part]
         # use a DF for inserting into duckdb
@@ -137,26 +137,24 @@ def insertRows(rows: List[dict]):
         # insert into meta store
         rowTime = datetime.utcfromtimestamp(partrows[0]['ts'] / 1000) # this is janky
         cursor.execute('''
-            insert into known_files (d, filename, filesize)  VALUES ('{}-{}-{}', '{}', {})
-        '''.format(rowTime.year, rowTime.month, rowTime.day, filename, fileSize))
+            insert into known_files (filename, filesize, partition)  VALUES ('{}', {}, '{}')
+        '''.format(filename, fileSize, part))
         conn.commit()
 
     return final_files
 
 def get_files(syear: int, smonth: int, sday: int, eyear: int, emonth: int, eday: int) -> list[str]:
     # can't use duckdb here otherwise the db will lock up due to nested queries
-    startDate = datetime(year=syear, month=smonth, day=sday)
-    endDate = datetime(year=eyear, month=emonth, day=eday)
     q = '''
-    select d, filename
+    select partition, filename
     from known_files
     where active = true
-    AND d >= '{}-{}-{}'
-    AND d <= '{}-{}-{}'
-    '''.format(startDate.year, startDate.month, startDate.day, endDate.year, endDate.month, endDate.day)
+    AND partition >= 'y={}/m={}/d={}'
+    AND partition <= 'y={}/m={}/d={}'
+    '''.format('{}'.format(syear).zfill(4), '{}'.format(smonth).zfill(2), '{}'.format(sday).zfill(2),'{}'.format(eyear).zfill(4), '{}'.format(emonth).zfill(2), '{}'.format(eday).zfill(2))
     cursor.execute(q)
     rows = cursor.fetchall()
-    return list(map(lambda x: 's3://testbucket/y={}/m={}/d={}/{}'.format('{}'.format(x[0].year).zfill(4), '{}'.format(x[0].month).zfill(2), '{}'.format(x[0].day).zfill(2), x[1]), rows))
+    return list(map(lambda x: 's3://testbucket/{}/{}'.format(x[0], x[1]), rows))
 
 ddb.create_function('get_files', get_files, [ty.INTEGER, ty.INTEGER, ty.INTEGER, ty.INTEGER, ty.INTEGER, ty.INTEGER], list[str])
 
@@ -164,8 +162,11 @@ ddb.sql('''
     create macro if not exists get_f(start_year:=2023, start_month:=1, start_day:=1, end_year:=2023, end_month:=1, end_day:=1) as get_files(start_year, start_month, start_day, end_year, end_month, end_day)
 ''')
 
-# def merge_files():
-#     # find files that can be merged
+def merge_files(maxFileSize, asc=False):
+    '''
+    desc merge should be fast, working on active partitions. asc merge should be slow and in background,
+    slowly fully optimizes partitions over time.
+    '''
 
 final_files = insertRows(example_events)
 print('inserted files', final_files)
