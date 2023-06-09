@@ -162,6 +162,18 @@ ddb.sql('''
     create macro if not exists get_f(start_year:=2023, start_month:=1, start_day:=1, end_year:=2023, end_month:=1, end_day:=1) as get_files(start_year, start_month, start_day, end_year, end_month, end_day)
 ''')
 
+# the `select *` gets overridden by the select on the macro, and has the same explain plan as if you did the `read_parquet` select directly. It effectively drops the unused columns.
+ddb.sql('''
+    create macro if not exists icedb(start_year:=2023, start_month:=1, start_day:=1, end_year:=2023, end_month:=1, end_day:=1) as table select * from read_parquet(get_files(start_year, start_month, start_day, end_year, end_month, end_day), hive_partitioning=1)
+''')
+
+# ddb.execute('''
+#     explain select properties::JSON->>'numtime'
+#     from icedb(start_month:=2, end_month:=8)
+#     where event = 'page_load'
+# ''')
+# print(ddb.fetchall())
+
 def merge_files(maxFileSize, asc=False):
     '''
     desc merge should be fast, working on active partitions. asc merge should be slow and in background,
@@ -212,6 +224,11 @@ from UNNEST(get_f(end_year:=2024))
 print(ddb.sql('''
     select sum((properties::JSON->>'numtime')::int64)
     from read_parquet(get_f(start_month:=2, end_month:=8), hive_partitioning=1)
+    where event = 'page_load'
+'''))
+print(ddb.sql('''
+    select sum((properties::JSON->>'numtime')::int64)
+    from icedb(start_month:=2, end_month:=8)
     where event = 'page_load'
 '''))
 
