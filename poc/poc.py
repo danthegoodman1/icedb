@@ -9,6 +9,7 @@ import duckdb.typing as ty
 import psycopg2
 import boto3
 import botocore
+from functools import reduce
 
 conn = psycopg2.connect(
     host="localhost",
@@ -53,17 +54,16 @@ example_events = [{
 }]
 
 ddb = duckdb.connect(":memory:")
-cursor = conn.cursor()
-cursor.execute('''
-    create table if not exists known_files (
-        partition TEXT NOT NULL,
-        filename TEXT NOT NULL,
-        filesize INT8 NOT NULL,
-        active BOOLEAN NOT NULL DEFAULT TRUE,
-        PRIMARY KEY(active, partition, filename)
-    )
-''')
-conn.commit()
+with conn.cursor() as cursor:
+    cursor.execute('''
+        create table if not exists known_files (
+            partition TEXT NOT NULL,
+            filename TEXT NOT NULL,
+            filesize INT8 NOT NULL,
+            active BOOLEAN NOT NULL DEFAULT TRUE,
+            PRIMARY KEY(active, partition, filename)
+        )
+    ''')
 
 ddb.execute('''
 install httpfs
@@ -136,25 +136,27 @@ def insertRows(rows: List[dict]):
 
         # insert into meta store
         rowTime = datetime.utcfromtimestamp(partrows[0]['ts'] / 1000) # this is janky
-        cursor.execute('''
-            insert into known_files (filename, filesize, partition)  VALUES ('{}', {}, '{}')
-        '''.format(filename, fileSize, part))
-        conn.commit()
+        with conn.cursor() as cursor:
+            cursor.execute('''
+                insert into known_files (filename, filesize, partition)  VALUES ('{}', {}, '{}')
+            '''.format(filename, fileSize, part))
 
     return final_files
 
 def get_files(syear: int, smonth: int, sday: int, eyear: int, emonth: int, eday: int) -> list[str]:
     # can't use duckdb here otherwise the db will lock up due to nested queries
-    q = '''
-    select partition, filename
-    from known_files
-    where active = true
-    AND partition >= 'y={}/m={}/d={}'
-    AND partition <= 'y={}/m={}/d={}'
-    '''.format('{}'.format(syear).zfill(4), '{}'.format(smonth).zfill(2), '{}'.format(sday).zfill(2),'{}'.format(eyear).zfill(4), '{}'.format(emonth).zfill(2), '{}'.format(eday).zfill(2))
-    cursor.execute(q)
-    rows = cursor.fetchall()
-    return list(map(lambda x: 's3://testbucket/{}/{}'.format(x[0], x[1]), rows))
+    with conn.cursor() as mycur:
+        q = '''
+        select partition, filename
+        from known_files
+        where active = true
+        AND partition >= 'y={}/m={}/d={}'
+        AND partition <= 'y={}/m={}/d={}'
+        '''.format('{}'.format(syear).zfill(4), '{}'.format(smonth).zfill(2), '{}'.format(sday).zfill(2),'{}'.format(eyear).zfill(4), '{}'.format(emonth).zfill(2), '{}'.format(eday).zfill(2))
+        mycur.execute(q)
+        rows = mycur.fetchall()
+        print('get_files got {} files'.format(len(rows)))
+        return list(map(lambda x: 's3://testbucket/{}/{}'.format(x[0], x[1]), rows))
 
 ddb.create_function('get_files', get_files, [ty.INTEGER, ty.INTEGER, ty.INTEGER, ty.INTEGER, ty.INTEGER, ty.INTEGER], list[str])
 
@@ -174,35 +176,104 @@ ddb.sql('''
 # ''')
 # print(ddb.fetchall())
 
-def merge_files(maxFileSize, asc=False):
+def sumfilesizes(arr) -> int:
+    t = 0
+    for i in arr:
+        t += i[2]
+    return t
+
+def merge_files(maxFileSize, maxFileCount=10, asc=False):
     '''
     desc merge should be fast, working on active partitions. asc merge should be slow and in background,
     slowly fully optimizes partitions over time.
     '''
     # cursor scan active files in the direction
     curid = str(uuid4())
-    mycur = conn.cursor(curid)
-    q = '''
-    select partition, filename, filesize
-    from known_files
-    where active = true
-    and filesize < {}
-    order by partition {}
-    '''.format(maxFileSize, 'asc' if asc else 'desc')
-    mycur.itersize = 500 # get 500 files at a time
-    mycur.execute(q)
-    for row in mycur:
-        print(row)
-        # parse the rows
+    buf = []
+    with conn.cursor(curid) as mycur:
+        mycur.itersize = 200 # get 200 rows at a time
+        mycur.execute('''
+        select partition, filename, filesize
+        from known_files
+        where active = true
+        and filesize < {}
+        order by partition {}
+        '''.format(maxFileSize, 'asc' if asc else 'desc'))
+        for row in mycur:
+            if len(buf) > 0 and row[0] != buf[0][0]:
+                if len(buf) > 1:
+                    # we've hit the end of the partition and we can merge it
+                    print("I've hit the end of the partition with files to merge")
+                    break
+
+                # we've hit the next partition, clear the buffer
+                print('buffer exceeded for {}, going to next partition'.format(buf[0][0]))
+                buf = []
+
+            # check if we would exceed the max file size
+            fsum = sumfilesizes(buf)
+            if len(buf) > 1 and fsum > maxFileSize:
+                print('I hit the max file size with {} bytes, going to start merging!'.format(fsum))
+                break
+
+            # check if we exceeded the max file count, only if valid count
+            if len(buf) > 1 and len(buf)-1 >= maxFileCount:
+                print('I hit the max file count with {} files, going to start merging!'.format(len(buf)))
+                break
+
+            buf.append(row)
 
     # select the files for update to make sure they are all still active, anything not active we drop (from colliding merges)
+    if len(buf) > 0:
+        # merge these files, update DB
+        print('I have files for merging! going to lock them now')
+        with conn.cursor() as mergecur:
+            # lock the files up
+            mergecur.execute('''
+                select filename
+                from known_files
+                where active = true
+                and partition = '{}'
+                and filename in ({})
+                for update
+            '''.format(buf[0][0], ','.join(list(map(lambda x: "'{}'".format(x[2]), buf)))))
+            locked_files = mergecur.fetchall()
+            new_f_name = '{}.parquet'.format(str(uuid4()))
+            new_f_path = buf[0][0] + "/" + new_f_name
+            # copy the files in S3
+            q = '''
+            COPY (
+                select *
+                from read_parquet([{}], hive_partitioning=1)
+            ) TO 's3://testbucket/{}'
+            '''.format(','.join(list(map(lambda x: "'s3://testbucket/{}/{}'".format(x[0], x[1]), buf))), new_f_path)
+            ddb.execute(q)
 
-    # merge these files, update DB
-    mycur.close()
-    pass
+            # get the new file size
+            obj = s3.head_object(
+                Bucket='testbucket',
+                Key=new_f_path
+            )
+            new_f_size = obj['ContentLength']
 
-final_files = insertRows(example_events)
-print('inserted files', final_files)
+            # insert the new file
+            mergecur.execute('''
+                insert into known_files (filename, filesize, partition)  VALUES ('{}', {}, '{}')
+            '''.format(new_f_name, new_f_size, buf[0][0]))
+
+            # update the old files
+            q = '''
+                update known_files
+                set active = false
+                where active = true
+                and partition = '{}'
+                and filename in ({})
+            '''.format(buf[0][0], ','.join(list(map(lambda x: "'{}'".format(x[1]), buf))))
+            mergecur.execute(q)
+
+# comment this section out to see that with merging the sum stays the same
+# final_files = insertRows(example_events)
+# print('inserted files', final_files)
 
 # show what it looks like
 print(ddb.sql('''
@@ -211,21 +282,24 @@ from UNNEST(get_f(end_year:=2024))
 '''))
 
 # merge files
-merge_files(100_000)
+merge_files(10_0000000)
 
 print(ddb.sql('''
 select count(*) as num_active_files_after_merge
 from UNNEST(get_f(end_year:=2024))
 '''))
 
-# merge files
-
 # query files
-print(ddb.sql('''
-    select sum((properties::JSON->>'numtime')::int64)
-    from read_parquet(get_f(start_month:=2, end_month:=8), hive_partitioning=1)
-    where event = 'page_load'
-'''))
+# print(ddb.sql('''
+#     select sum((properties::JSON->>'numtime')::int64)
+#     from read_parquet(get_f(start_month:=2, end_month:=8), hive_partitioning=1)
+#     where event = 'page_load'
+# '''))
+# print(ddb.sql('''
+#     select sum((properties::JSON->>'numtime')::int64)
+#     from read_parquet(get_files(2023, 2, 1, 2023, 8, 1), hive_partitioning=1)
+#     where event = 'page_load'
+# '''))
 print(ddb.sql('''
     select sum((properties::JSON->>'numtime')::int64)
     from icedb(start_month:=2, end_month:=8)
