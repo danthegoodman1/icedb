@@ -1,4 +1,3 @@
-import os
 from typing import List
 from datetime import datetime
 from uuid import uuid4
@@ -9,7 +8,6 @@ import duckdb.typing as ty
 import psycopg2
 import boto3
 import botocore
-from functools import reduce
 
 conn = psycopg2.connect(
     host="localhost",
@@ -135,7 +133,6 @@ def insertRows(rows: List[dict]):
         fileSize = obj['ContentLength']
 
         # insert into meta store
-        rowTime = datetime.utcfromtimestamp(partrows[0]['ts'] / 1000) # this is janky
         with conn.cursor() as cursor:
             cursor.execute('''
                 insert into known_files (filename, filesize, partition)  VALUES ('{}', {}, '{}')
