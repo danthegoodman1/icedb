@@ -223,3 +223,17 @@ class IceDB:
                         and filename in ({})
                     '''.format(buf[0][0], ','.join(list(map(lambda x: "'{}'".format(x[1]), buf))))
                     mergecur.execute(q)
+    
+    def get_files(self, gte_part: str, lte_part: str) -> List[str]:
+        with self.conn:
+            with self.conn.cursor() as mycur:
+                mycur.execute('''
+                select partition, filename
+                from known_files
+                where active = true
+                AND partition >= %s
+                AND partition <= %s
+                ''', (gte_part, lte_part))
+                rows = mycur.fetchall()
+                print('get_files got {} files'.format(len(rows)))
+                return list(map(lambda x: 's3://{}/{}/{}'.format(self.s3bucket, x[0], x[1]), rows))
