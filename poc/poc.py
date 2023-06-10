@@ -272,8 +272,8 @@ def merge_files(maxFileSize, maxFileCount=10, asc=False):
             mergecur.execute(q)
 
 # comment this section out to see that with merging the sum stays the same
-# final_files = insertRows(example_events)
-# print('inserted files', final_files)
+final_files = insertRows(example_events)
+print('inserted files', final_files)
 
 # show what it looks like
 print(ddb.sql('''
@@ -282,7 +282,7 @@ from UNNEST(get_f(end_year:=2024))
 '''))
 
 # merge files
-merge_files(10_0000000)
+# merge_files(10_0000000)
 
 print(ddb.sql('''
 select count(*) as num_active_files_after_merge
@@ -306,4 +306,5 @@ print(ddb.sql('''
     where event = 'page_load'
 '''))
 
-cursor.close()
+conn.commit()
+conn.close()
