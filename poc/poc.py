@@ -282,7 +282,7 @@ from UNNEST(get_f(end_year:=2024))
 '''))
 
 # merge files
-# merge_files(10_0000000)
+merge_files(10_0000000)
 
 print(ddb.sql('''
 select count(*) as num_active_files_after_merge
