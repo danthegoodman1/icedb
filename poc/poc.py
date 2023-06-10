@@ -282,7 +282,7 @@ from UNNEST(get_f(end_year:=2024))
 '''))
 
 # merge files
-merge_files(10_0000000)
+# merge_files(10_0000000)
 
 print(ddb.sql('''
 select count(*) as num_active_files_after_merge
@@ -300,10 +300,17 @@ from UNNEST(get_f(end_year:=2024))
 #     from read_parquet(get_files(2023, 2, 1, 2023, 8, 1), hive_partitioning=1)
 #     where event = 'page_load'
 # '''))
+# print(ddb.sql('''
+#     select sum((properties::JSON->>'numtime')::int64)
+#     from icedb(start_month:=2, end_month:=8)
+#     where event = 'page_load'
+# '''))
 print(ddb.sql('''
-    select sum((properties::JSON->>'numtime')::int64)
-    from icedb(start_month:=2, end_month:=8)
-    where event = 'page_load'
+select sum((properties::JSON->>'numtime')::int64) as agg, extract('month' from epoch_ms(ts)) as month
+from icedb(start_month:=2, end_month:=8)
+where event = 'page_load'
+group by month
+order by agg desc
 '''))
 
 conn.commit()
