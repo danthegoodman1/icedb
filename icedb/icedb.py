@@ -3,7 +3,6 @@ from typing import List, Callable
 import duckdb
 import psycopg2
 from typing import List
-from datetime import datetime
 from uuid import uuid4
 import pandas as pd
 import duckdb.typing as ty
