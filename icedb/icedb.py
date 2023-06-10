@@ -5,7 +5,6 @@ import psycopg2
 from typing import List
 from datetime import datetime
 from uuid import uuid4
-import json
 import pandas as pd
 import duckdb.typing as ty
 import psycopg2
@@ -133,3 +132,98 @@ class IceDB:
                     '''.format(filename, fileSize, part))
 
         return final_files
+
+    def sumfilesizes(self, arr) -> int:
+        t = 0
+        for i in arr:
+            t += i[2]
+        return t
+    
+    def merge_files(self, maxFileSize, maxFileCount=10, asc=False):
+        '''
+        desc merge should be fast, working on active partitions. asc merge should be slow and in background,
+        slowly fully optimizes partitions over time.
+        '''
+        # cursor scan active files in the direction
+        curid = str(uuid4())
+        buf = []
+        with self.conn:
+            with self.conn.cursor(curid) as mycur:
+                mycur.itersize = 200 # get 200 rows at a time
+                mycur.execute('''
+                select partition, filename, filesize
+                from known_files
+                where active = true
+                and filesize < {}
+                order by partition {}
+                '''.format(maxFileSize, 'asc' if asc else 'desc'))
+                for row in mycur:
+                    if len(buf) > 0 and row[0] != buf[0][0]:
+                        if len(buf) > 1:
+                            # we've hit the end of the partition and we can merge it
+                            print("I've hit the end of the partition with files to merge")
+                            break
+
+                        # we've hit the next partition, clear the buffer
+                        print('buffer exceeded for {}, going to next partition'.format(buf[0][0]))
+                        buf = []
+
+                    # check if we would exceed the max file size
+                    fsum = self.sumfilesizes(buf)
+                    if len(buf) > 1 and fsum > maxFileSize:
+                        print('I hit the max file size with {} bytes, going to start merging!'.format(fsum))
+                        break
+
+                    # check if we exceeded the max file count, only if valid count
+                    if len(buf) > 1 and len(buf)-1 >= maxFileCount:
+                        print('I hit the max file count with {} files, going to start merging!'.format(len(buf)))
+                        break
+
+                    buf.append(row)
+
+            # select the files for update to make sure they are all still active, anything not active we drop (from colliding merges)
+            if len(buf) > 0:
+                # merge these files, update DB
+                print('I have files for merging! going to lock them now')
+                with self.conn.cursor() as mergecur:
+                    # lock the files up
+                    mergecur.execute('''
+                        select filename
+                        from known_files
+                        where active = true
+                        and partition = '{}'
+                        and filename in ({})
+                        for update
+                    '''.format(buf[0][0], ','.join(list(map(lambda x: "'{}'".format(x[2]), buf)))))
+                    new_f_name = '{}.parquet'.format(str(uuid4()))
+                    new_f_path = buf[0][0] + "/" + new_f_name
+                    # copy the files in S3
+                    q = '''
+                    COPY (
+                        select *
+                        from read_parquet([{}], hive_partitioning=1)
+                    ) TO 's3://{}/{}'
+                    '''.format(','.join(list(map(lambda x: "'s3://{}/{}/{}'".format(self.s3bucket, x[0], x[1]), buf))), self.s3bucket, new_f_path)
+                    self.ddb.execute(q)
+
+                    # get the new file size
+                    obj = self.s3.head_object(
+                        Bucket=self.s3bucket,
+                        Key=new_f_path
+                    )
+                    new_f_size = obj['ContentLength']
+
+                    # insert the new file
+                    mergecur.execute('''
+                        insert into known_files (filename, filesize, partition)  VALUES ('{}', {}, '{}')
+                    '''.format(new_f_name, new_f_size, buf[0][0]))
+
+                    # update the old files
+                    q = '''
+                        update known_files
+                        set active = false
+                        where active = true
+                        and partition = '{}'
+                        and filename in ({})
+                    '''.format(buf[0][0], ','.join(list(map(lambda x: "'{}'".format(x[1]), buf))))
+                    mergecur.execute(q)
