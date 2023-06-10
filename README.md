@@ -1,5 +1,7 @@
 # IceDB
 
-A cloud-native JSON-first serverless analytical database designed for low cost and arbitrary read capacity while maintaining the benefits of columnar data formats. It leverages object storage, serverless compute, and serverless databases to provide an infinitely scalable data warehouse for JSON data in which you only pay for storage when idle. It is called “IceDB” because it is designed for cold-starts: Going from idle to high-performance querying in milliseconds.
+IceDB is a truly serverless OLAP/data lake hybrid in-process database framework optimized for event-based data. It combines DuckDB, Parquet files, and S3 storage to fully decouple storage and compute, while only paying for compute during query execution time.
 
-https://blog.danthegoodman.com/introducing-icedb--a-serverless-json-analytics-database
+_Massive WIP_
+
+See https://blog.danthegoodman.com/icedb-v2
