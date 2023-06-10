@@ -131,12 +131,6 @@ class IceDB:
                     '''.format(filename, fileSize, part))
 
         return final_files
-
-    def sumfilesizes(self, arr) -> int:
-        t = 0
-        for i in arr:
-            t += i[2]
-        return t
     
     def merge_files(self, maxFileSize, maxFileCount=10, asc=False):
         '''
@@ -146,6 +140,7 @@ class IceDB:
         # cursor scan active files in the direction
         curid = str(uuid4())
         buf = []
+        fsum = 0
         with self.conn:
             with self.conn.cursor(curid) as mycur:
                 mycur.itersize = 200 # get 200 rows at a time
@@ -166,9 +161,9 @@ class IceDB:
                         # we've hit the next partition, clear the buffer
                         print('buffer exceeded for {}, going to next partition'.format(buf[0][0]))
                         buf = []
+                        fsum = 0
 
                     # check if we would exceed the max file size
-                    fsum = self.sumfilesizes(buf)
                     if len(buf) > 1 and fsum > maxFileSize:
                         print('I hit the max file size with {} bytes, going to start merging!'.format(fsum))
                         break
@@ -179,11 +174,13 @@ class IceDB:
                         break
 
                     buf.append(row)
+                    fsum += row[2]
 
-            # select the files for update to make sure they are all still active, anything not active we drop (from colliding merges)
-            if len(buf) > 0:
-                # merge these files, update DB
-                print('I have files for merging! going to lock them now')
+        # select the files for update to make sure they are all still active, anything not active we drop (from colliding merges)
+        if len(buf) > 0:
+            # merge these files, update DB
+            print('I have files for merging! going to lock them now')
+            with self.conn:
                 with self.conn.cursor() as mergecur:
                     # lock the files up
                     mergecur.execute('''
