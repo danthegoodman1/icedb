@@ -6,6 +6,18 @@ _Massive WIP_
 
 See https://blog.danthegoodman.com/icedb-v2
 
+## Usage
+
+```
+pip install git+https://github.com/danthegoodman1/icedb
+```
+
+```python
+from icedb import IceDB
+
+ice = IceDB(...)
+```
+
 ## Pre-installing extensions
 
 DuckDB uses the `httpfs` extension. See how to pre-install it into your runtime here: https://duckdb.org/docs/extensions/overview.html#downloading-extensions-directly-from-s3
