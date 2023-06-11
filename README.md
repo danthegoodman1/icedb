@@ -44,6 +44,20 @@ Example:
 ['event', 'timestamp']
 ```
 
+### `formatRow`
+
+Format row is the function that will determine how a row is finally formatted to be inserted. This is where you would want to flatten JSON so that the data is not corrupted.
+
+**It's crucial that you flatten the row and do not have nested objects**
+
+Example:
+
+```python
+def format_row(row: dict) -> dict:
+    row['properties'] = json.dumps(row['properties']) # convert nested dict to json string
+    return row
+```
+
 ## Pre-installing extensions
 
 DuckDB uses the `httpfs` extension. See how to pre-install it into your runtime here: https://duckdb.org/docs/extensions/overview.html#downloading-extensions-directly-from-s3

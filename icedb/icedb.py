@@ -12,11 +12,13 @@ import botocore
 import psycopg2.extensions
 
 PartitionFunctionType = Callable[[dict], str]
+FormatRowType = Callable[[dict], dict]
 
 class IceDB:
 
     partitionStrategy: PartitionFunctionType
     sortOrder: List[str]
+    formatRow: FormatRowType
     ddb: duckdb
     conn: psycopg2.extensions.connection
     s3region: str
@@ -32,6 +34,7 @@ class IceDB:
         self,
         partitionStrategy: PartitionFunctionType,
         sortOrder: List[str],
+        formatRow: FormatRowType,
         pgdsn: str,
         s3bucket: str,
         s3region: str,
@@ -43,6 +46,7 @@ class IceDB:
     ):
         self.partitionStrategy = partitionStrategy
         self.sortOrder = sortOrder
+        self.formatRow = formatRow
         self.set_isolation = set_isolation
 
         self.s3region = s3region
@@ -118,7 +122,7 @@ class IceDB:
             if len(partrows) > 1:
                 # we need to add more rows
                 for row in partrows[1:]:
-                    df.loc[len(df)] = row
+                    df.loc[len(df)] = self.formatRow(row)
 
             # copy to parquet file
             self.ddb.sql('''
