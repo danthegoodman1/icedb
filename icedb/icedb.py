@@ -209,14 +209,16 @@ class IceDB:
                         # now we need serializable isolation to protect against concurrent merges
                         mergecur.execute("set transaction isolation level serializable")
 
-                    mergecur.execute('''
+                    q = '''
                         select filename
                         from known_files
                         where active = true
                         and partition = '{}'
                         and filename in ({})
                         for update
-                    '''.format(partition, ','.join(list(map(lambda x: "'{}'".format(x[2]), buf)))))
+                    '''.format(partition, ','.join(list(map(lambda x: "'{}'".format(x[2]), buf))))
+                    print('merge q', q)
+                    mergecur.execute(q)
                     actual_files = list(map(lambda x: x[0], mergecur.fetchall()))
                     if len(actual_files) == 0:
                         print('no actual files during merge, were there competing merges? I am exiting.')
