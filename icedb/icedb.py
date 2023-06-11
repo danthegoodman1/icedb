@@ -219,7 +219,9 @@ class IceDB:
                     '''.format(partition, ','.join(list(map(lambda x: "'{}'".format(x[2]), buf))))
                     print('merge q', q)
                     mergecur.execute(q)
-                    actual_files = list(map(lambda x: x[0], mergecur.fetchall()))
+                    rows = mergecur.fetchall()
+                    print('merge rows', rows)
+                    actual_files = list(map(lambda x: x[0], rows))
                     if len(actual_files) == 0:
                         print('no actual files during merge, were there competing merges? I am exiting.')
                         return 0
