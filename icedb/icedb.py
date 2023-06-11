@@ -10,7 +10,7 @@ import psycopg2
 import boto3
 import botocore
 
-PartitionFunctionType = Callable[[dict], List[List[str]]]
+PartitionFunctionType = Callable[[dict], str]
 
 class IceDB:
 
@@ -91,7 +91,7 @@ class IceDB:
         partmap = {}
         for row in rows:
             # merge the rows into same parts
-            part = self.partStrategy(row)
+            part = self.partitionStrategy(row)
             if part not in partmap:
                 partmap[part] = []
             partmap[part].append(row)
