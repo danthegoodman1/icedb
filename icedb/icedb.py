@@ -152,7 +152,9 @@ class IceDB:
         with self.conn:
             with self.conn.cursor() as mycur:
                 # need to manually start cursor because this is "not in a transaction yet"?
-                mycur.execute("declare {} cursor".format(curid))
+                mycur.execute("""
+                declare "{}" cursor
+                """.format(curid))
                 mycur.itersize = 200 # get 200 rows at a time
                 if self.set_isolation:
                     # don't need serializable isolation here, just need a snapshot
