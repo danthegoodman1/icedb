@@ -70,7 +70,7 @@ class IceDB:
         self.ddb.execute("SET s3_access_key_id='{}'".format(s3accesskey))
         self.ddb.execute("SET s3_secret_access_key='{}'".format(s3secretkey))
         self.ddb.execute("SET s3_endpoint='{}'".format(s3endpoint.split("://")[1]))
-        self.ddb.execute("SET s3_use_ssl={}".format('true' if "http://" in s3endpoint else 'false'))
+        self.ddb.execute("SET s3_use_ssl={}".format('false' if "http://" in s3endpoint else 'true'))
         self.ddb.execute("SET s3_url_style='path'")
 
         # trick for using autocommit
