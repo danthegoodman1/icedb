@@ -204,7 +204,7 @@ class IceDB:
                             break
 
                         # check if we exceeded the max file count, only if valid count
-                        if len(buf) > 1 and len(buf)-1 >= maxFileCount:
+                        if len(buf) > 1 and len(buf) >= maxFileCount:
                             print('I hit the max file count with {} files, going to start merging!'.format(len(buf)))
                             break
 
