@@ -9,6 +9,7 @@ import duckdb.typing as ty
 import psycopg2
 import boto3
 import botocore
+import psycopg2.extensions
 
 PartitionFunctionType = Callable[[dict], str]
 
@@ -17,7 +18,7 @@ class IceDB:
     partitionStrategy: PartitionFunctionType
     sortOrder: List[str]
     ddb: duckdb
-    conn: psycopg2.connection
+    conn: psycopg2.extensions.connection
     s3region: str
     s3accesskey: str
     s3secretkey: str
