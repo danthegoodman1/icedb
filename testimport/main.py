@@ -1,11 +1,17 @@
 from icedb import IceDB
 from datetime import datetime
+import duckdb
+import duckdb.typing as ty
+import json
 
 def partStrat(row: dict) -> str:
     rowTime = datetime.utcfromtimestamp(row['ts']/1000)
     part = 'y={}/m={}/d={}'.format('{}'.format(rowTime.year).zfill(4), '{}'.format(rowTime.month).zfill(2), '{}'.format(rowTime.day).zfill(2))
     return part
 
+def format_row(row: dict) -> dict:
+    row['properties'] = json.dumps(row['properties']) # convert nested dict to json string
+    return row
 
 ice = IceDB(
     partitionStrategy=partStrat,
@@ -15,7 +21,9 @@ ice = IceDB(
     s3region="us-east-1",
     s3accesskey="Ia3NaZPuGcOEoHIJr6mZ",
     s3secretkey="pS5gWnpb7yErrQzhlhzE62ir4UNbUQ6PGqOvth5d",
-    s3endpoint="http://localhost:9000"
+    s3endpoint="http://localhost:9000",
+    create_table=True,
+    formatRow=format_row
 )
 
 def get_partition_range(syear: int, smonth: int, sday: int, eyear: int, emonth: int, eday: int) -> list[str]:
@@ -31,6 +39,43 @@ def get_files(syear: int, smonth: int, sday: int, eyear: int, emonth: int, eday:
 
 
 # print(get_partition_range(2023,1,1, 2023,8,1))
+
+ddb = duckdb.connect(":memory:")
+
+ddb.execute('''
+install httpfs
+''')
+ddb.execute('''
+load httpfs
+''')
+ddb.execute('''
+SET s3_region='us-east-1'
+''')
+ddb.execute('''
+SET s3_access_key_id='Ia3NaZPuGcOEoHIJr6mZ'
+''')
+ddb.execute('''
+SET s3_secret_access_key='pS5gWnpb7yErrQzhlhzE62ir4UNbUQ6PGqOvth5d'
+''')
+ddb.execute('''
+SET s3_endpoint='localhost:9000'
+''')
+ddb.execute('''
+SET s3_use_ssl=false
+''')
+ddb.execute('''
+SET s3_url_style='path'
+''')
+
+ddb.create_function('get_files', get_files, [ty.INTEGER, ty.INTEGER, ty.INTEGER, ty.INTEGER, ty.INTEGER, ty.INTEGER], list[str])
+
+ddb.sql('''
+    create macro if not exists get_f(start_year:=2023, start_month:=1, start_day:=1, end_year:=2023, end_month:=1, end_day:=1) as get_files(start_year, start_month, start_day, end_year, end_month, end_day)
+''')
+
+ddb.sql('''
+    create macro if not exists icedb(start_year:=2023, start_month:=1, start_day:=1, end_year:=2023, end_month:=1, end_day:=1) as table select * from read_parquet(get_files(start_year, start_month, start_day, end_year, end_month, end_day), hive_partitioning=1)
+''')
 
 example_events = [{
     "ts": 1686176939445,
@@ -67,17 +112,29 @@ example_events = [{
     }
 }]
 
+# print(format_row(example_events[0]))
+
 inserted = ice.insert(example_events)
 print('inserted', inserted)
 
-print('got files', len(get_files(2020,1,1, 2024,8,1)))
+print('got files', len(get_files(2023,1,1, 2023,8,1)))
+print(ddb.sql('''
+select sum((properties::JSON->>'numtime')::int64) as agg, extract('month' from epoch_ms(ts)) as month
+from icedb(start_month:=2, end_month:=8)
+where event = 'page_load'
+group by month
+order by agg desc
+'''))
 
 merged = ice.merge_files(100_000)
 print('merged', merged)
 
-print('got files', len(get_files(2020,1,1, 2024,8,1)))
-
-merged = ice.merge_files(100_000)
-print('merged', merged)
+print(ddb.sql('''
+select sum((properties::JSON->>'numtime')::int64) as agg, extract('month' from epoch_ms(ts)) as month
+from icedb(start_month:=2, end_month:=8)
+where event = 'page_load'
+group by month
+order by agg desc
+'''))
 
 print('got files', len(get_files(2020,1,1, 2024,8,1)))
