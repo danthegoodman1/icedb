@@ -259,6 +259,7 @@ class IceDB:
                         and partition = '{}'
                         and filename in ({})
                     '''.format(partition, ','.join(list(map(lambda x: "'{}'".format(x[1]), actual_files))))
+                    print(q)
                     mergecur.execute(q)
                     return len(actual_files)
         return 0
