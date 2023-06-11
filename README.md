@@ -5,3 +5,9 @@ IceDB is a truly serverless OLAP/data lake hybrid in-process database framework 
 _Massive WIP_
 
 See https://blog.danthegoodman.com/icedb-v2
+
+## Pre-installing extensions
+
+DuckDB uses the `httpfs` extension. See how to pre-install it into your runtime here: https://duckdb.org/docs/extensions/overview.html#downloading-extensions-directly-from-s3
+
+and see the `extension_directory` setting: https://duckdb.org/docs/sql/configuration.html#:~:text=PHYSICAL_ONLY-,extension_directory,-Set%20the%20directory with the default of `$HOME/.duckdb/`
