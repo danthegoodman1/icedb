@@ -217,7 +217,7 @@ class IceDB:
                         and filename in ({})
                         for update
                     '''.format(partition, ','.join(list(map(lambda x: "'{}'".format(x[2]), buf)))))
-                    actual_files = map(lambda x: x[0], mergecur.fetchall())
+                    actual_files = list(map(lambda x: x[0], mergecur.fetchall()))
                     if len(actual_files) == 0:
                         print('no actual files during merge, were there competing merges? I am exiting.')
                         return 0
