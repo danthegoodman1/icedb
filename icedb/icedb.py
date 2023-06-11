@@ -118,15 +118,14 @@ class IceDB:
             partrows = partmap[part]
 
             # use a DF for inserting into duckdb
-            df = pd.DataFrame()
             first_row = self.formatRow(partrows[0])
             first_row['_row_id'] = str(uuid4())
+            df = pd.DataFrame(first_row)
             if len(partrows) > 1:
                 # we need to add more rows
                 for row in partrows[1:]:
                     new_row = self.formatRow(row)
                     new_row['_row_id'] = str(uuid4())
-                    print(new_row)
                     df.loc[len(df)] = new_row
 
             # copy to parquet file
