@@ -38,7 +38,8 @@ class IceDB:
         s3accesskey: str,
         s3secretkey: str,
         s3endpoint: str,
-        set_isolation=False
+        set_isolation=False,
+        create_table=True
     ):
         self.partitionStrategy = partitionStrategy
         self.sortOrder = sortOrder
@@ -73,20 +74,21 @@ class IceDB:
         self.ddb.execute("SET s3_use_ssl={}".format('false' if "http://" in s3endpoint else 'true'))
         self.ddb.execute("SET s3_url_style='path'")
 
-        # trick for using autocommit
-        with self.conn:
-            with self.conn.cursor() as cursor:
-                # make sure the table exists
-                cursor.execute('''
-                    create table if not exists known_files (
-                        partition TEXT NOT NULL,
-                        filename TEXT NOT NULL,
-                        filesize INT8 NOT NULL,
-                        active BOOLEAN NOT NULL DEFAULT TRUE,
-                        created TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                        PRIMARY KEY(active, partition, filename)
-                    )
-                ''')
+        if create_table:
+            # trick for using autocommit
+            with self.conn:
+                with self.conn.cursor() as cursor:
+                    # make sure the table exists
+                    cursor.execute('''
+                        create table if not exists known_files (
+                            partition TEXT NOT NULL,
+                            filename TEXT NOT NULL,
+                            filesize INT8 NOT NULL,
+                            active BOOLEAN NOT NULL DEFAULT TRUE,
+                            created TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                            PRIMARY KEY(active, partition, filename)
+                        )
+                    ''')
     def close(self):
         self.conn.close()
 
@@ -220,7 +222,6 @@ class IceDB:
                     '''.format(partition, ','.join(list(map(lambda x: "'{}'".format(x[1]), buf))))
                     mergecur.execute(q)
                     rows = mergecur.fetchall()
-                    print('merge rows', rows)
                     actual_files = list(map(lambda x: x[0], rows))
                     if len(actual_files) == 0:
                         print('no actual files during merge, were there competing merges? I am exiting.')
@@ -259,7 +260,6 @@ class IceDB:
                         and partition = '{}'
                         and filename in ({})
                     '''.format(partition, ','.join(list(map(lambda x: "'{}'".format(x), actual_files))))
-                    print(q)
                     mergecur.execute(q)
                     return len(actual_files)
         return 0
