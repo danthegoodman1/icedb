@@ -216,7 +216,7 @@ class IceDB:
                         and partition = '{}'
                         and filename in ({})
                         for update
-                    '''.format(partition, ','.join(list(map(lambda x: "'{}'".format(x[2]), buf))))
+                    '''.format(partition, ','.join(list(map(lambda x: "'{}'".format(x[1]), buf))))
                     print('merge q', q)
                     mergecur.execute(q)
                     rows = mergecur.fetchall()
