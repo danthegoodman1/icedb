@@ -146,7 +146,7 @@ class IceDB:
         Returns the number of files merged.
         '''
         # cursor scan active files in the direction
-        curid = str(uuid4())
+        curid = "a"+str(uuid4()).replace("-", "")
         buf = []
         fsum = 0
         with self.conn:
@@ -157,40 +157,45 @@ class IceDB:
                     mycur.execute("set transaction isolation level repeatable read")
                 
                 # need to manually start cursor because this is "not in a transaction yet"?
-                mycur.itersize = 200 # get 200 rows at a time
-
                 mycur.execute('''
-                declare a{} cursor for
+                declare {} cursor for
                 select partition, filename, filesize
                 from known_files
                 where active = true
                 and filesize < {}
                 order by partition {}
-                '''.format(curid.replace("-", ""), maxFileSize, 'asc' if asc else 'desc'))
-                for row in mycur:
-                    if len(buf) > 0 and row[0] != buf[0][0]:
-                        if len(buf) > 1:
-                            # we've hit the end of the partition and we can merge it
-                            print("I've hit the end of the partition with files to merge")
+                '''.format(curid, maxFileSize, 'asc' if asc else 'desc'))
+                while True:
+                    mycur.execute("""
+                    fetch forward {} from {}
+                    """.format(200, curid))
+                    rows = mycur.fetchall()
+                    if len(rows) == 0:
+                        break
+                    for row in rows:
+                        if len(buf) > 0 and row[0] != buf[0][0]:
+                            if len(buf) > 1:
+                                # we've hit the end of the partition and we can merge it
+                                print("I've hit the end of the partition with files to merge")
+                                break
+
+                            # we've hit the next partition, clear the buffer
+                            print('buffer exceeded for {}, going to next partition'.format(buf[0][0]))
+                            buf = []
+                            fsum = 0
+
+                        # check if we would exceed the max file size
+                        if len(buf) > 1 and fsum > maxFileSize:
+                            print('I hit the max file size with {} bytes, going to start merging!'.format(fsum))
                             break
 
-                        # we've hit the next partition, clear the buffer
-                        print('buffer exceeded for {}, going to next partition'.format(buf[0][0]))
-                        buf = []
-                        fsum = 0
+                        # check if we exceeded the max file count, only if valid count
+                        if len(buf) > 1 and len(buf)-1 >= maxFileCount:
+                            print('I hit the max file count with {} files, going to start merging!'.format(len(buf)))
+                            break
 
-                    # check if we would exceed the max file size
-                    if len(buf) > 1 and fsum > maxFileSize:
-                        print('I hit the max file size with {} bytes, going to start merging!'.format(fsum))
-                        break
-
-                    # check if we exceeded the max file count, only if valid count
-                    if len(buf) > 1 and len(buf)-1 >= maxFileCount:
-                        print('I hit the max file count with {} files, going to start merging!'.format(len(buf)))
-                        break
-
-                    buf.append(row)
-                    fsum += row[2]
+                        buf.append(row)
+                        fsum += row[2]
 
         # select the files for update to make sure they are all still active, anything not active we drop (from colliding merges)
         if len(buf) > 0:
