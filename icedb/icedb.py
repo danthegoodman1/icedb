@@ -24,7 +24,6 @@ class IceDB:
     s3secretkey: str
     s3endpoint: str
     s3bucket: str
-    s3ssl: bool
     pgdsn: str
     s3: any
     set_isolation: bool
@@ -39,7 +38,6 @@ class IceDB:
         s3accesskey: str,
         s3secretkey: str,
         s3endpoint: str,
-        s3ssl=True,
         set_isolation=False
     ):
         self.partitionStrategy = partitionStrategy
@@ -51,7 +49,6 @@ class IceDB:
         self.s3secretkey = s3secretkey
         self.s3endpoint = s3endpoint
         self.s3bucket = s3bucket
-        self.s3ssl = s3ssl
 
         self.pgdsn = pgdsn
         self.conn = psycopg2.connect(pgdsn)
@@ -72,8 +69,8 @@ class IceDB:
         self.ddb.execute("SET s3_region='{}'".format(s3region))
         self.ddb.execute("SET s3_access_key_id='{}'".format(s3accesskey))
         self.ddb.execute("SET s3_secret_access_key='{}'".format(s3secretkey))
-        self.ddb.execute("SET s3_endpoint='{}'".format(s3endpoint))
-        self.ddb.execute("SET s3_use_ssl={}".format('true' if self.s3ssl else 'false'))
+        self.ddb.execute("SET s3_endpoint='{}'".format(s3endpoint.split("://")[1]))
+        self.ddb.execute("SET s3_use_ssl={}".format('true' if "http://" in s3endpoint else 'false'))
         self.ddb.execute("SET s3_url_style='path'")
 
         # trick for using autocommit
