@@ -86,6 +86,8 @@ class IceDB:
                         PRIMARY KEY(active, partition, filename)
                     )
                 ''')
+    def close(self):
+        self.conn.close()
 
     def insert(self, rows: List[dict]) -> List[str]:
         """
@@ -148,7 +150,9 @@ class IceDB:
         buf = []
         fsum = 0
         with self.conn:
-            with self.conn.cursor(curid) as mycur:
+            with self.conn.cursor() as mycur:
+                # need to manually start cursor because this is "not in a transaction yet"?
+                mycur.execute("declare {} cursor".format(curid))
                 mycur.itersize = 200 # get 200 rows at a time
                 if self.set_isolation:
                     # don't need serializable isolation here, just need a snapshot
