@@ -17,7 +17,7 @@ class IceDB:
     partitionStrategy: PartitionFunctionType
     sortOrder: List[str]
     ddb: duckdb
-    conn: psycopg2._T_conn
+    conn: psycopg2.connection
     s3region: str
     s3accesskey: str
     s3secretkey: str
