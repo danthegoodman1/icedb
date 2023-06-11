@@ -83,6 +83,7 @@ class IceDB:
                         filename TEXT NOT NULL,
                         filesize INT8 NOT NULL,
                         active BOOLEAN NOT NULL DEFAULT TRUE,
+                        created TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                         PRIMARY KEY(active, partition, filename)
                     )
                 ''')
