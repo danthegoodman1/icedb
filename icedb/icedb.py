@@ -126,6 +126,7 @@ class IceDB:
                 for row in partrows[1:]:
                     new_row = self.formatRow(row)
                     new_row['_row_id'] = str(uuid4())
+                    print(new_row)
                     df.loc[len(df)] = new_row
 
             # copy to parquet file
