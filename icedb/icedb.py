@@ -151,21 +151,22 @@ class IceDB:
         fsum = 0
         with self.conn:
             with self.conn.cursor() as mycur:
-                # need to manually start cursor because this is "not in a transaction yet"?
-                mycur.execute("declare a{} cursor".format(curid.replace("-", "")))
-                mycur.itersize = 200 # get 200 rows at a time
                 if self.set_isolation:
                     # don't need serializable isolation here, just need a snapshot
                     # if the files change between the next transaction, then they will be omitted from the first query selecting them
                     mycur.execute("set transaction isolation level repeatable read")
+                
+                # need to manually start cursor because this is "not in a transaction yet"?
+                mycur.itersize = 200 # get 200 rows at a time
 
                 mycur.execute('''
+                declare a{} cursor for
                 select partition, filename, filesize
                 from known_files
                 where active = true
                 and filesize < {}
                 order by partition {}
-                '''.format(maxFileSize, 'asc' if asc else 'desc'))
+                '''.format(curid.replace("-", ""), maxFileSize, 'asc' if asc else 'desc'))
                 for row in mycur:
                     if len(buf) > 0 and row[0] != buf[0][0]:
                         if len(buf) > 1:
