@@ -25,6 +25,7 @@ class IceDB:
     s3bucket: str
     pgdsn: str
     s3: any
+    set_isolation: bool
 
     def __init__(
         self,
@@ -36,16 +37,18 @@ class IceDB:
         s3accesskey=os.environ['AWS_ACCESS_KEY_ID'],
         s3secretkey=os.environ['AWS_SECRET_ACCESS_KEY'],
         s3endpoint=os.environ['S3_ENDPOINT'],
+        set_isolation=False
     ):
         self.partitionStrategy = partitionStrategy
         self.sortOrder = sortOrder
-        
+        self.set_isolation = set_isolation
+
         self.s3region = s3region
         self.s3accesskey = s3accesskey
         self.s3secretkey = s3secretkey
         self.s3endpoint = s3endpoint
         self.s3bucket = s3bucket
-        
+
         self.pgdsn = pgdsn
         self.conn = psycopg2.connect(pgdsn)
         self.conn.autocommit = True
@@ -103,7 +106,7 @@ class IceDB:
             fullpath = part + '/' + filename
             final_files.append(fullpath)
             partrows = partmap[part]
-            
+
             # use a DF for inserting into duckdb
             df = pd.DataFrame(partrows[0])
             if len(partrows) > 1:
@@ -131,11 +134,13 @@ class IceDB:
                     '''.format(filename, fileSize, part))
 
         return final_files
-    
-    def merge_files(self, maxFileSize, maxFileCount=10, asc=False):
+
+    def merge_files(self, maxFileSize, maxFileCount=10, asc=False) -> int:
         '''
         desc merge should be fast, working on active partitions. asc merge should be slow and in background,
         slowly fully optimizes partitions over time.
+
+        Returns the number of files merged.
         '''
         # cursor scan active files in the direction
         curid = str(uuid4())
@@ -144,6 +149,11 @@ class IceDB:
         with self.conn:
             with self.conn.cursor(curid) as mycur:
                 mycur.itersize = 200 # get 200 rows at a time
+                if self.set_isolation:
+                    # don't need serializable isolation here, just need a snapshot
+                    # if the files change between the next transaction, then they will be omitted from the first query selecting them
+                    mycur.execute("set transaction isolation level repeatable read")
+
                 mycur.execute('''
                 select partition, filename, filesize
                 from known_files
@@ -178,11 +188,16 @@ class IceDB:
 
         # select the files for update to make sure they are all still active, anything not active we drop (from colliding merges)
         if len(buf) > 0:
+            partition = buf[0][0]
             # merge these files, update DB
             print('I have files for merging! going to lock them now')
             with self.conn:
                 with self.conn.cursor() as mergecur:
                     # lock the files up
+                    if self.set_isolation:
+                        # now we need serializable isolation to protect against concurrent merges
+                        mergecur.execute("set transaction isolation level serializable")
+
                     mergecur.execute('''
                         select filename
                         from known_files
@@ -190,16 +205,23 @@ class IceDB:
                         and partition = '{}'
                         and filename in ({})
                         for update
-                    '''.format(buf[0][0], ','.join(list(map(lambda x: "'{}'".format(x[2]), buf)))))
+                    '''.format(partition, ','.join(list(map(lambda x: "'{}'".format(x[2]), buf)))))
+                    actual_files = map(lambda x: x[0], mergecur.fetchall())
+                    if len(actual_files) == 0:
+                        print('no actual files during merge, were there competing merges? I am exiting.')
+                        return 0
+                    if len(actual_files) == 1:
+                        print('only got a single file when locking files for merging, were there competing merges? I am exiting.')
+                        return 0
                     new_f_name = '{}.parquet'.format(str(uuid4()))
-                    new_f_path = buf[0][0] + "/" + new_f_name
+                    new_f_path = partition + "/" + new_f_name
                     # copy the files in S3
                     q = '''
                     COPY (
                         select *
                         from read_parquet([{}], hive_partitioning=1)
                     ) TO 's3://{}/{}'
-                    '''.format(','.join(list(map(lambda x: "'s3://{}/{}/{}'".format(self.s3bucket, x[0], x[1]), buf))), self.s3bucket, new_f_path)
+                    '''.format(','.join(list(map(lambda x: "'s3://{}/{}/{}'".format(self.s3bucket, x[0], x[1]), actual_files))), self.s3bucket, new_f_path)
                     self.ddb.execute(q)
 
                     # get the new file size
@@ -212,7 +234,7 @@ class IceDB:
                     # insert the new file
                     mergecur.execute('''
                         insert into known_files (filename, filesize, partition)  VALUES ('{}', {}, '{}')
-                    '''.format(new_f_name, new_f_size, buf[0][0]))
+                    '''.format(new_f_name, new_f_size, partition))
 
                     # update the old files
                     q = '''
@@ -221,9 +243,11 @@ class IceDB:
                         where active = true
                         and partition = '{}'
                         and filename in ({})
-                    '''.format(buf[0][0], ','.join(list(map(lambda x: "'{}'".format(x[1]), buf))))
+                    '''.format(partition, ','.join(list(map(lambda x: "'{}'".format(x[1]), actual_files))))
                     mergecur.execute(q)
-    
+                    return len(actual_files)
+        return 0
+
     def get_files(self, gte_part: str, lte_part: str) -> List[str]:
         with self.conn:
             with self.conn.cursor() as mycur:
