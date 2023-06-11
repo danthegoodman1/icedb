@@ -38,45 +38,26 @@ def get_files(syear: int, smonth: int, sday: int, eyear: int, emonth: int, eday:
     )
 
 
-# print(get_partition_range(2023,1,1, 2023,8,1))
 
+# This section is just for preparing to query stuff
 ddb = duckdb.connect(":memory:")
-
-ddb.execute('''
-install httpfs
-''')
-ddb.execute('''
-load httpfs
-''')
-ddb.execute('''
-SET s3_region='us-east-1'
-''')
-ddb.execute('''
-SET s3_access_key_id='Ia3NaZPuGcOEoHIJr6mZ'
-''')
-ddb.execute('''
-SET s3_secret_access_key='pS5gWnpb7yErrQzhlhzE62ir4UNbUQ6PGqOvth5d'
-''')
-ddb.execute('''
-SET s3_endpoint='localhost:9000'
-''')
-ddb.execute('''
-SET s3_use_ssl=false
-''')
-ddb.execute('''
-SET s3_url_style='path'
-''')
-
+ddb.execute("install httpfs")
+ddb.execute("load httpfs")
+ddb.execute("SET s3_region='us-east-1'")
+ddb.execute("SET s3_access_key_id='Ia3NaZPuGcOEoHIJr6mZ'")
+ddb.execute("SET s3_secret_access_key='pS5gWnpb7yErrQzhlhzE62ir4UNbUQ6PGqOvth5d'")
+ddb.execute("SET s3_endpoint='localhost:9000'")
+ddb.execute("SET s3_use_ssl=false")
+ddb.execute("SET s3_url_style='path'")
 ddb.create_function('get_files', get_files, [ty.INTEGER, ty.INTEGER, ty.INTEGER, ty.INTEGER, ty.INTEGER, ty.INTEGER], list[str])
-
 ddb.sql('''
     create macro if not exists get_f(start_year:=2023, start_month:=1, start_day:=1, end_year:=2023, end_month:=1, end_day:=1) as get_files(start_year, start_month, start_day, end_year, end_month, end_day)
 ''')
-
 ddb.sql('''
     create macro if not exists icedb(start_year:=2023, start_month:=1, start_day:=1, end_year:=2023, end_month:=1, end_day:=1) as table select * from read_parquet(get_files(start_year, start_month, start_day, end_year, end_month, end_day), hive_partitioning=1)
 ''')
 
+# some sample data
 example_events = [{
     "ts": 1686176939445,
     "event": "page_load",
@@ -112,11 +93,11 @@ example_events = [{
     }
 }]
 
-# print(format_row(example_events[0]))
 
 inserted = ice.insert(example_events)
 print('inserted', inserted)
 
+# see the number of files and aggregation result before we merge
 print('got files', len(get_files(2023,1,1, 2023,8,1)))
 print(ddb.sql('''
 select sum((properties::JSON->>'numtime')::int64) as agg, extract('month' from epoch_ms(ts)) as month
@@ -129,6 +110,7 @@ order by agg desc
 merged = ice.merge_files(100_000)
 print('merged', merged)
 
+# you will see the aggregation values are the same after the merge
 print(ddb.sql('''
 select sum((properties::JSON->>'numtime')::int64) as agg, extract('month' from epoch_ms(ts)) as month
 from icedb(start_month:=2, end_month:=8)
@@ -137,4 +119,5 @@ group by month
 order by agg desc
 '''))
 
+# you'll see the file count is smaller now
 print('got files', len(get_files(2020,1,1, 2024,8,1)))
