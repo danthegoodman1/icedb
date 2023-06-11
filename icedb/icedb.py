@@ -120,7 +120,7 @@ class IceDB:
             # use a DF for inserting into duckdb
             first_row = self.formatRow(partrows[0])
             first_row['ice_row_id'] = str(uuid4())
-            df = pd.DataFrame(first_row)
+            df = pd.DataFrame.from_dict(first_row)
             if len(partrows) > 1:
                 # we need to add more rows
                 for row in partrows[1:]:
