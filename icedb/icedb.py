@@ -217,7 +217,6 @@ class IceDB:
                         and filename in ({})
                         for update
                     '''.format(partition, ','.join(list(map(lambda x: "'{}'".format(x[1]), buf))))
-                    print('merge q', q)
                     mergecur.execute(q)
                     rows = mergecur.fetchall()
                     print('merge rows', rows)
@@ -236,7 +235,7 @@ class IceDB:
                         select *
                         from read_parquet([{}], hive_partitioning=1)
                     ) TO 's3://{}/{}'
-                    '''.format(','.join(list(map(lambda x: "'s3://{}/{}/{}'".format(self.s3bucket, x[0], x[1]), actual_files))), self.s3bucket, new_f_path)
+                    '''.format(','.join(list(map(lambda x: "'s3://{}/{}/{}'".format(self.s3bucket, partition, x), actual_files))), self.s3bucket, new_f_path)
                     self.ddb.execute(q)
 
                     # get the new file size
