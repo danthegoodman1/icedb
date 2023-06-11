@@ -33,12 +33,12 @@ class IceDB:
         self,
         partitionStrategy: PartitionFunctionType,
         sortOrder: List[str],
-        pgdsn=os.environ['PG_DSN'],
-        s3bucket=os.environ['S3_BUCKET'],
-        s3region=os.environ['S3_REGION'],
-        s3accesskey=os.environ['AWS_ACCESS_KEY_ID'],
-        s3secretkey=os.environ['AWS_SECRET_ACCESS_KEY'],
-        s3endpoint=os.environ['S3_ENDPOINT'],
+        pgdsn: str,
+        s3bucket: str,
+        s3region: str,
+        s3accesskey: str,
+        s3secretkey: str,
+        s3endpoint: str,
         s3ssl=True,
         set_isolation=False
     ):
