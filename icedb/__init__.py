@@ -1,1 +1,1 @@
-from icedb import icedb
+from .icedb import icedb
