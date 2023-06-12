@@ -10,6 +10,8 @@ See https://blog.danthegoodman.com/icedb-v2
 
 There is a bug in duckdb right now where `read_parquet` will fire a table macro twice, and show the file twice when listing them, but this doesn't affect actual query results: https://github.com/duckdb/duckdb/issues/7897
 
+In the meantime, consider this when listing files in SQL, and add some caching in your function if needed.
+
 ## Usage
 
 ```
