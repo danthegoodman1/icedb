@@ -1,13 +1,33 @@
 <functions>
     <function>
         <type>executable</type>
-        <name>test_function_python</name>
+        <name>get_files</name>
         <return_type>String</return_type>
         <argument>
             <type>UInt64</type>
-            <name>value</name>
+            <name>syear</name>
+        </argument>
+        <argument>
+            <type>UInt64</type>
+            <name>smonth</name>
+        </argument>
+        <argument>
+            <type>UInt64</type>
+            <name>sday</name>
+        </argument>
+        <argument>
+            <type>UInt64</type>
+            <name>eyear</name>
+        </argument>
+        <argument>
+            <type>UInt64</type>
+            <name>emonth</name>
+        </argument>
+        <argument>
+            <type>UInt64</type>
+            <name>eday</name>
         </argument>
         <format>TabSeparated</format>
-        <command>get_files.py</command>
+        <command>icedb_get_files</command>
     </function>
 </functions>
