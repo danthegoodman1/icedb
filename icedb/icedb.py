@@ -43,7 +43,7 @@ class IceDB:
         s3endpoint: str,
         set_isolation=False,
         create_table=True,
-        duckdb_ext_dir: str | None
+        duckdb_ext_dir: str=None
     ):
         self.partitionStrategy = partitionStrategy
         self.sortOrder = sortOrder
