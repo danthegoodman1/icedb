@@ -73,10 +73,10 @@ ddb.execute('''
 SET s3_region='us-east-1'
 ''')
 ddb.execute('''
-SET s3_access_key_id='Ia3NaZPuGcOEoHIJr6mZ'
+SET s3_access_key_id='user'
 ''')
 ddb.execute('''
-SET s3_secret_access_key='pS5gWnpb7yErrQzhlhzE62ir4UNbUQ6PGqOvth5d'
+SET s3_secret_access_key='password'
 ''')
 ddb.execute('''
 SET s3_endpoint='localhost:9000'
@@ -93,8 +93,8 @@ s3 = session.client('s3',
     config=botocore.config.Config(s3={'addressing_style': 'path'}),
     region_name='us-east-1',
     endpoint_url='http://localhost:9000',
-    aws_access_key_id='Ia3NaZPuGcOEoHIJr6mZ',
-    aws_secret_access_key='pS5gWnpb7yErrQzhlhzE62ir4UNbUQ6PGqOvth5d'
+    aws_access_key_id='user',
+    aws_secret_access_key='password'
 )
 
 def insertRows(rows: List[dict]):
