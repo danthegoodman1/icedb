@@ -155,7 +155,7 @@ class IceDB:
 
         return final_files
 
-    def merge_files(self, maxFileSize, maxFileCount=10, asc=False) -> int:
+    def merge_files(self, maxFileSize, maxFileCount=10, asc=False, partition_prefix: str=None) -> int:
         '''
         desc merge should be fast, working on active partitions. asc merge should be slow and in background,
         slowly fully optimizes partitions over time.
@@ -180,8 +180,14 @@ class IceDB:
                 from known_files
                 where active = true
                 and filesize < {}
+                {}
                 order by partition {}
-                '''.format(curid, maxFileSize, 'asc' if asc else 'desc'))
+                '''.format(
+                    curid,
+                    maxFileSize,
+                    '' if partition_prefix is None else "and partition > '{}'".format(partition_prefix),
+                    'asc' if asc else 'desc')
+                )
                 while True:
                     mycur.execute("""
                     fetch forward {} from {}
