@@ -46,7 +46,7 @@ Example:
 
 ### `formatRow`
 
-Format row is the function that will determine how a row is finally formatted to be inserted. This is where you would want to flatten JSON so that the data is not corrupted.
+Format row is the function that will determine how a row is finally formatted to be inserted. This is where you would want to flatten JSON so that the data is not corrupted. This is called just before inserting into a parquet file.
 
 **It's crucial that you flatten the row and do not have nested objects**
 
@@ -57,6 +57,10 @@ def format_row(row: dict) -> dict:
     row['properties'] = json.dumps(row['properties']) # convert nested dict to json string
     return row
 ```
+
+### `unique_row_key`
+
+If provided, will use a top-level row key as the `_row_id` for deduplication. If not provided a UUID will be generated.
 
 ## Pre-installing extensions
 

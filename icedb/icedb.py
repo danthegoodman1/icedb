@@ -29,6 +29,7 @@ class IceDB:
     pgdsn: str
     s3: any
     set_isolation: bool
+    unique_row_key: str = None
 
     def __init__(
         self,
@@ -43,7 +44,8 @@ class IceDB:
         s3endpoint: str,
         set_isolation=False,
         create_table=True,
-        duckdb_ext_dir: str=None
+        duckdb_ext_dir: str=None,
+        unique_row_key: str=None
     ):
         self.partitionStrategy = partitionStrategy
         self.sortOrder = sortOrder
@@ -59,6 +61,8 @@ class IceDB:
         self.pgdsn = pgdsn
         self.conn = psycopg2.connect(pgdsn)
         self.conn.autocommit = True
+
+        self.unique_row_key = unique_row_key
 
         self.session = boto3.session.Session()
         self.s3 = self.session.client('s3',
@@ -122,7 +126,7 @@ class IceDB:
 
             # use a DF for inserting into duckdb
             first_row = self.formatRow(partrows[0])
-            first_row['ice_row_id'] = str(uuid4())
+            first_row['_row_id'] = str(uuid4()) if self.unique_row_key is None else partrows[0][self.unique_row_key]
             for key in first_row:
                 # convert everything to array
                 first_row[key] = [first_row[key]]
@@ -131,7 +135,7 @@ class IceDB:
                 # we need to add more rows
                 for row in partrows[1:]:
                     new_row = self.formatRow(row)
-                    new_row['ice_row_id'] = str(uuid4())
+                    new_row['_row_id'] = str(uuid4()) if self.unique_row_key is None else row[self.unique_row_key]
                     df.loc[len(df)] = new_row
 
             # copy to parquet file
