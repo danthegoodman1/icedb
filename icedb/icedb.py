@@ -42,7 +42,8 @@ class IceDB:
         s3secretkey: str,
         s3endpoint: str,
         set_isolation=False,
-        create_table=True
+        create_table=True,
+        duckdb_ext_path: str | None
     ):
         self.partitionStrategy = partitionStrategy
         self.sortOrder = sortOrder
@@ -77,6 +78,8 @@ class IceDB:
         self.ddb.execute("SET s3_endpoint='{}'".format(s3endpoint.split("://")[1]))
         self.ddb.execute("SET s3_use_ssl={}".format('false' if "http://" in s3endpoint else 'true'))
         self.ddb.execute("SET s3_url_style='path'")
+        if duckdb_ext_path is not None:
+            self.ddb.execute("SET extension_path='{}'".format(duckdb_ext_path))
 
         if create_table:
             # trick for using autocommit
