@@ -28,6 +28,6 @@
             <name>eday</name>
         </argument>
         <format>TabSeparated</format>
-        <command>get_files.py</command>
+        <command>icedb_get_files</command>
     </function>
 </functions>
