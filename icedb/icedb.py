@@ -256,6 +256,7 @@ class IceDB:
                         return 0
                     new_f_name = '{}.parquet'.format(str(uuid4()))
                     new_f_path = partition + "/" + new_f_name
+                    
                     # copy the files in S3
                     q = '''
                     COPY (
