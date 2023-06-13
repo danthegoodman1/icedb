@@ -88,7 +88,7 @@ You should run a second, slower merge internal in `ASC` order that fully optimiz
 
 You can optionally provide a custom merge query to achieve functionality such as aggregate-on-merge or replace-on-merge as found in the variety of ClickHouse engine tables such as the AggregatingMergeTree and ReplacingMergeTree.
 
-This can also be used along side double-writing (to different partition prefixes)
+This can also be used along side double-writing (to different partition prefixes) to create materialized views!
 
 **WARNING: If you do not retain your merged files, bugs in merges can permanently corrupt data. Only customize merges if you know exactly what you are doing!**
 
