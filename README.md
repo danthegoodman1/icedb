@@ -92,18 +92,23 @@ This can also be used along side double-writing (to different partition prefixes
 
 **WARNING: If you do not retain your merged files, bugs in merges can permanently corrupt data. Only customize merges if you know exactly what you are doing!**
 
-This is achieved through the `custom_merge_query` function. You must provide 2 parameters via `?` like shown in the default query below.
+This is achieved through the `custom_merge_query` function. You should not provide any parameters to this query.
 
 The default query is:
 
 ```sql
-COPY (
-    select *
-    from read_parquet(?, hive_partitioning=1)
-) TO ?
+select *
+from source_files
 ```
 
-The first `?` is for the list of files that are part of the merge. The Second `?` is the name of the new file.
+`source_files` is simply the CTE:
+
+```sql
+WITH source_files AS (
+    select *
+    from read_parquet(?, hive_partitioning=1)
+)
+```
 
 ### Handling `_row_id`
 
@@ -112,14 +117,12 @@ If you are aggregating, you must include a new `_row_id`. If you are replacing t
 Example aggregation merge query:
 
 ```sql
-COPY (
-    select 
-        user_id,
-        sum(clicks) as clicks,
-        gen_random_uuid()::TEXT as _row_id
-    from read_parquet(?, hive_partitioning=1)
-    group by user_id
-) TO ?
+select 
+    user_id,
+    sum(clicks) as clicks,
+    gen_random_uuid()::TEXT as _row_id
+from source_files
+group by user_id
 ```
 
 This data set will reduce the number of rows over time by aggregating them by `user_id`.
