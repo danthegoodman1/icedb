@@ -46,8 +46,7 @@ class IceDB:
         set_isolation=False,
         create_table=True,
         duckdb_ext_dir: str=None,
-        unique_row_key: str=None,
-        custom_merge_query: str=None
+        unique_row_key: str=None
     ):
         self.partitionStrategy = partitionStrategy
         self.sortOrder = sortOrder
@@ -65,7 +64,6 @@ class IceDB:
         self.conn.autocommit = True
 
         self.unique_row_key = unique_row_key
-        self.custom_merge_query = custom_merge_query
 
         self.session = boto3.session.Session()
         self.s3 = self.session.client('s3',
@@ -162,7 +160,7 @@ class IceDB:
 
         return final_files
 
-    def merge_files(self, maxFileSize, maxFileCount=10, asc=False, partition_prefix: str=None) -> int:
+    def merge_files(self, maxFileSize, maxFileCount=10, asc=False, partition_prefix: str=None, custom_merge_query: str=None) -> int:
         '''
         desc merge should be fast, working on active partitions. asc merge should be slow and in background,
         slowly fully optimizes partitions over time.
@@ -270,7 +268,7 @@ class IceDB:
                     '''.format('''
                         select *
                         from source_files
-                    ''' if self.custom_merge_query is None else self.custom_merge_query)
+                    ''' if custom_merge_query is None else custom_merge_query)
 
                     self.ddb.execute(q, [
                         ','.join(list(map(lambda x: "'s3://{}/{}/{}'".format(self.s3bucket, partition, x), actual_files))),
