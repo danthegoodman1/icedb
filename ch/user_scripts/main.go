@@ -56,7 +56,7 @@ func main() {
 		log.Fatal("err querying", err)
 	}
 
-	log.Println("got query", fmt.Sprintf("y=%s/m=%s/d=%s", syear, smonth, sday), fmt.Sprintf("y=%s/m=%s/d=%s", eyear, emonth, eday))
+	log.Println("got part range", fmt.Sprintf("y=%s/m=%s/d=%s", syear, smonth, sday), fmt.Sprintf("y=%s/m=%s/d=%s", eyear, emonth, eday))
 
 	for rows.Next() {
 		log.Println("scanning row...")
