@@ -261,15 +261,17 @@ class IceDB:
                     q = '''
                     COPY (
                         {}
-                    ) TO ?
-                    '''.format('''
+                    ) TO '{}'
+                    '''.format(
+                        '''
                         select *
                         from read_parquet(?, hive_partitioning=1)
-                    ''' if custom_merge_query is None else custom_merge_query)
+                        ''' if custom_merge_query is None else custom_merge_query,
+                        's3://{}/{}'.format(self.s3bucket, new_f_path)
+                    )
 
                     self.ddb.execute(q, [
-                        ','.join(list(map(lambda x: "'s3://{}/{}/{}'".format(self.s3bucket, partition, x), actual_files))),
-                        's3://{}/{}'.format(self.s3bucket, new_f_path)
+                        ','.join(list(map(lambda x: "'s3://{}/{}/{}'".format(self.s3bucket, partition, x), actual_files)))
                     ])
 
                     # get the new file size
