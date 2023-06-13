@@ -47,7 +47,7 @@ class IceDB:
         create_table=True,
         duckdb_ext_dir: str=None,
         unique_row_key: str=None,
-        custom_merge_query: str=None,
+        custom_merge_query: str=None
     ):
         self.partitionStrategy = partitionStrategy
         self.sortOrder = sortOrder
