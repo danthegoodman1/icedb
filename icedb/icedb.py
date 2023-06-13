@@ -258,16 +258,12 @@ class IceDB:
                     new_f_path = partition + "/" + new_f_name
                     # copy the files in S3
                     q = '''
-                    WITH source_files AS (
-                        select *
-                        from read_parquet(?, hive_partitioning=1)
-                    )
                     COPY (
                         {}
                     ) TO ?
                     '''.format('''
                         select *
-                        from source_files
+                        from read_parquet(?, hive_partitioning=1)
                     ''' if custom_merge_query is None else custom_merge_query)
 
                     self.ddb.execute(q, [

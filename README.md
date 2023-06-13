@@ -98,17 +98,10 @@ The default query is:
 
 ```sql
 select *
-from source_files
+from read_parquet(?, hive_partitioning=1)
 ```
 
-`source_files` is simply the CTE:
-
-```sql
-WITH source_files AS (
-    select *
-    from read_parquet(?, hive_partitioning=1)
-)
-```
+The `?` **must be included**, and is the list of files being merged.
 
 ### Handling `_row_id`
 
@@ -117,11 +110,11 @@ If you are aggregating, you must include a new `_row_id`. If you are replacing t
 Example aggregation merge query:
 
 ```sql
-select 
+select
     user_id,
     sum(clicks) as clicks,
     gen_random_uuid()::TEXT as _row_id
-from source_files
+from read_parquet(?, hive_partitioning=1)
 group by user_id
 ```
 
