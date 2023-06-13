@@ -75,11 +75,11 @@ def query():
     ddb = duckdb.connect(":memory:")
     ddb.execute("install httpfs")
     ddb.execute("load httpfs")
-    ddb.execute("SET s3_region='us-east-1'")
-    ddb.execute("SET s3_access_key_id='user'")
-    ddb.execute("SET s3_secret_access_key='password'")
-    ddb.execute("SET s3_endpoint='localhost:9000'")
-    ddb.execute("SET s3_use_ssl=false")
+    ddb.execute(f"SET s3_region='{os.environ['S3_REGION']}'")
+    ddb.execute(f"SET s3_access_key_id='{os.environ['S3_ACCESS_KEY']}'")
+    ddb.execute(f"SET s3_secret_access_key='{os.environ['S3_SECRET_KEY']}'")
+    ddb.execute(f"SET s3_endpoint='{os.environ['S3_ENDPOINT'].split('://')[1]}'")
+    ddb.execute(f"SET s3_use_ssl={'false' if 'http://' in os.environ['S3_ENDPOINT'] else 'true'}")
     ddb.execute("SET s3_url_style='path'")
     ddb.create_function('get_files', get_files, [ty.VARCHAR, ty.INTEGER, ty.INTEGER, ty.INTEGER, ty.INTEGER, ty.INTEGER, ty.INTEGER], list[str])
     ddb.sql('''
@@ -89,7 +89,9 @@ def query():
         create macro if not exists icedb(tabl:='segment', start_year:=2023, start_month:=1, start_day:=1, end_year:=2023, end_month:=1, end_day:=1) as table select * from read_parquet(get_files(tabl, start_year, start_month, start_day, end_year, end_month, end_day), hive_partitioning=1, filename=1)
     ''')
     try:
+        print('querying..')
         result = ddb.sql(j['query'])
+        print('got res!')
         if "format" not in j:
             return str(result)
         else:
@@ -103,6 +105,8 @@ def query():
         if "Parquet reader needs at least one file to read" in str(e):
             # TODO: give empty CSV with known headers
             return "no data in time range!", 404
+        else:
+            raise e
     except Exception as e:
         raise e
 
@@ -181,4 +185,4 @@ def merge_files():
 
 
 if __name__ == '__main__':
-    app.run(debug=True if "DEBUG" in os.environ and os.environ['DEBUG'] == '1' else False, port=int(os.environ['PORT']) if "PORT" in os.environ else 8090)
+    app.run(debug=True if "DEBUG" in os.environ and os.environ['DEBUG'] == '1' else False, port=int(os.environ['PORT']) if "PORT" in os.environ else 8090, host='0.0.0.0')
