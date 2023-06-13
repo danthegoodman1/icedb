@@ -97,7 +97,8 @@ class IceDB:
                             filename TEXT NOT NULL,
                             filesize INT8 NOT NULL,
                             active BOOLEAN NOT NULL DEFAULT TRUE,
-                            created TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                            _created TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                            _updated TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                             PRIMARY KEY(active, partition, filename)
                         )
                     ''')
@@ -290,6 +291,7 @@ class IceDB:
                     q = '''
                         update known_files
                         set active = false
+                        and _updated = NOW()
                         where active = true
                         and partition = '{}'
                         and filename in ({})
