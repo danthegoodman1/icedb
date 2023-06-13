@@ -15,16 +15,6 @@ def get_partition_range(table: str, syear: int, smonth: int, sday: int, eyear: i
     return ['table={}/y={}/m={}/d={}'.format(table, '{}'.format(syear).zfill(4), '{}'.format(smonth).zfill(2), '{}'.format(sday).zfill(2)),
             'table={}/y={}/m={}/d={}'.format(table, '{}'.format(eyear).zfill(4), '{}'.format(emonth).zfill(2), '{}'.format(eday).zfill(2))]
 
-def auth_header() -> bool:
-    if "AUTH" not in os.environ:
-        return True
-    authSecret = os.environ["AUTH"]
-    authHeader = request.headers.get('Authorization')
-    try:
-        return authSecret == authHeader.split('Bearer ')[1]
-    except Exception as e:
-        return False
-
 def createSegmentIce():
     return IceDB(
         partitionStrategy=part_segment,
@@ -41,6 +31,7 @@ def createSegmentIce():
         unique_row_key='messageId'
     )
 
+# TODO: add dict-based caching for this because of duckdb double-triggering with read_parquet
 def get_files(table: str, syear: int, smonth: int, sday: int, eyear: int, emonth: int, eday: int) -> list[str]:
     part_range = get_partition_range(table, syear, smonth, sday, eyear, emonth, eday)
     print('part range', part_range)
@@ -52,6 +43,16 @@ def get_files(table: str, syear: int, smonth: int, sday: int, eyear: int, emonth
     print('got files', res)
     ice.close()
     return res
+
+def auth_header() -> bool:
+    if "AUTH" not in os.environ:
+        return True
+    authSecret = os.environ["AUTH"]
+    authHeader = request.headers.get('Authorization')
+    try:
+        return authSecret == authHeader.split('Bearer ')[1]
+    except Exception as e:
+        return False
 
 
 @app.route('/hc')
@@ -105,6 +106,26 @@ def query():
     except Exception as e:
         raise e
 
+@app.route('/j', methods=['POST'])
+def process_json():
+    if not auth_header():
+        return 'invalid auth', 401
+    content_type = request.headers.get('Content-Type')
+    if (content_type == 'application/json'):
+        j = request.get_json()
+        ice = createSegmentIce()
+        if isinstance(j, dict):
+            inserted = ice.insert([j])
+            ice.close()
+            return inserted
+        if isinstance(j, list):
+            inserted = ice.insert(j)
+            ice.close()
+            return inserted
+        return 'bad JSON!'
+    else:
+        return 'Content-Type not supported!'
+
 def part_segment(row: dict) -> str:
     rowtime = datetime.fromisoformat(row['timestamp'])
     # the `table=segment/` prefix makes it effectively the `segment` table
@@ -127,22 +148,6 @@ def format_segment(row: dict) -> dict:
         final_row["event"] = row["event"]
 
     return final_row
-
-def createSegmentIce():
-    return IceDB(
-        partitionStrategy=part_segment,
-        sortOrder=['event', 'ts'],
-        pgdsn=os.environ["DSN"],
-        s3bucket=os.environ["S3_BUCKET"],
-        s3region=os.environ["S3_REGION"],
-        s3accesskey=os.environ["S3_ACCESS_KEY"],
-        s3secretkey=os.environ["S3_SECRET_KEY"],
-        s3endpoint=os.environ["S3_ENDPOINT"],
-        create_table=os.environ["CREATE_TABLE"] == "1" if "CREATE_TABLE" in os.environ else False,
-        formatRow=format_segment,
-        duckdb_ext_dir='/app/duckdb_exts',
-        unique_row_key='messageId'
-    )
 
 # Post a segment event directly
 @app.route('/segment/insert', methods=['POST'])
