@@ -30,6 +30,7 @@ class IceDB:
     s3: any
     set_isolation: bool
     unique_row_key: str = None
+    custom_merge_query: str = None
 
     def __init__(
         self,
@@ -159,7 +160,7 @@ class IceDB:
 
         return final_files
 
-    def merge_files(self, maxFileSize, maxFileCount=10, asc=False, partition_prefix: str=None) -> int:
+    def merge_files(self, maxFileSize, maxFileCount=10, asc=False, partition_prefix: str=None, custom_merge_query: str=None) -> int:
         '''
         desc merge should be fast, working on active partitions. asc merge should be slow and in background,
         slowly fully optimizes partitions over time.
@@ -176,7 +177,7 @@ class IceDB:
                     # don't need serializable isolation here, just need a snapshot
                     # if the files change between the next transaction, then they will be omitted from the first query selecting them
                     mycur.execute("set transaction isolation level repeatable read")
-                
+
                 # need to manually start cursor because this is "not in a transaction yet"?
                 mycur.execute('''
                 declare {} cursor for
@@ -257,12 +258,22 @@ class IceDB:
                     new_f_path = partition + "/" + new_f_name
                     # copy the files in S3
                     q = '''
-                    COPY (
+                    WITH source_files AS (
                         select *
-                        from read_parquet([{}], hive_partitioning=1)
-                    ) TO 's3://{}/{}'
-                    '''.format(','.join(list(map(lambda x: "'s3://{}/{}/{}'".format(self.s3bucket, partition, x), actual_files))), self.s3bucket, new_f_path)
-                    self.ddb.execute(q)
+                        from read_parquet(?, hive_partitioning=1)
+                    )
+                    COPY (
+                        {}
+                    ) TO ?
+                    '''.format('''
+                        select *
+                        from source_files
+                    ''' if custom_merge_query is None else custom_merge_query)
+
+                    self.ddb.execute(q, [
+                        ','.join(list(map(lambda x: "'s3://{}/{}/{}'".format(self.s3bucket, partition, x), actual_files))),
+                        's3://{}/{}'.format(self.s3bucket, new_f_path)
+                    ])
 
                     # get the new file size
                     obj = self.s3.head_object(

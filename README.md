@@ -83,3 +83,68 @@ However concurrent merges in opposite directions is highly suggested.
 For example in the use case where a partition might look like `y=YYYY/m=MM/d=DD` then you should merge in `DESC` order frequently (say once every 15 seconds). This will keep the hot partitions more optimized so that queries on current data don't get too slow. These should have smaller file count and size requirements so they can be fast, and reduce the lock time of files in the meta store.
 
 You should run a second, slower merge internal in `ASC` order that fully optimizes older partitions. These merges can be much large in file size and count, as they are less likely to conflict with active queries. Say this is run every 5 or 10 minutes.
+
+## Custom Merge Query (ADVANCED USAGE)
+
+You can optionally provide a custom merge query to achieve functionality such as aggregate-on-merge or replace-on-merge as found in the variety of ClickHouse engine tables such as the AggregatingMergeTree and ReplacingMergeTree.
+
+This can also be used along side double-writing (to different partition prefixes)
+
+**WARNING: If you do not retain your merged files, bugs in merges can permanently corrupt data. Only customize merges if you know exactly what you are doing!**
+
+This is achieved through the `custom_merge_query` function. You should not provide any parameters to this query.
+
+The default query is:
+
+```sql
+select *
+from source_files
+```
+
+`source_files` is simply the CTE:
+
+```sql
+WITH source_files AS (
+    select *
+    from read_parquet(?, hive_partitioning=1)
+)
+```
+
+### Handling `_row_id`
+
+If you are aggregating, you must include a new `_row_id`. If you are replacing this should come through choosing the correct row to replace.
+
+Example aggregation merge query:
+
+```sql
+select 
+    user_id,
+    sum(clicks) as clicks,
+    gen_random_uuid()::TEXT as _row_id
+from source_files
+group by user_id
+```
+
+This data set will reduce the number of rows over time by aggregating them by `user_id`.
+
+**Pro-Tip: Handling Counts**
+
+Counting is a bit trickier because you would normally have to pivot from `count()` when merging a never-before-merged file to `sum()` with files that have been merged at least once to account for the new number. The trick to this is instead adding a `counter` column with value `1` every time you insert a new row.
+
+Then, when merging, you simply `sum(counter) as counter` to keep a count of the number of rows that match a condition.
+
+## Multiple Tables
+
+Multiple tables can be achieved through a combination of the `partition_prefix` parameter in `IceDB.merge_files`, as well as partitioning via a Hive partitioning key such as:
+
+```
+table={}/y={}/m={}/d={}
+```
+
+You can then easily parameterize partition ranges like:
+
+```python
+def get_partition_range(table: str, syear: int, smonth: int, sday: int, eyear: int, emonth: int, eday: int) -> list[str]:
+    return ['table={}/y={}/m={}/d={}'.format(table, '{}'.format(syear).zfill(4), '{}'.format(smonth).zfill(2), '{}'.format(sday).zfill(2)),
+            'table={}/y={}/m={}/d={}'.format(table, '{}'.format(eyear).zfill(4), '{}'.format(emonth).zfill(2), '{}'.format(eday).zfill(2))]
+```
