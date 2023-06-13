@@ -51,12 +51,12 @@ func main() {
 	where active = true
 	AND partition >= $1
 	AND partition <= $2
-	`, fmt.Sprintf("y=%s/m=%s/d=%s", syear, smonth, sday), fmt.Sprintf("y=%s/m=%s/d=%s", eyear, emonth, eday))
+	`, fmt.Sprintf("y=%04s/m=%02s/d=%02s", syear, smonth, sday), fmt.Sprintf("y=%04s/m=%02s/d=%02s", eyear, emonth, eday))
 	if err != nil {
 		log.Fatal("err querying", err)
 	}
 
-	log.Println("got part range", fmt.Sprintf("y=%s/m=%s/d=%s", syear, smonth, sday), fmt.Sprintf("y=%s/m=%s/d=%s", eyear, emonth, eday))
+	log.Println("got part range", fmt.Sprintf("y=%04s/m=%02s/d=%02s", syear, smonth, sday), fmt.Sprintf("y=%04s/m=%02s/d=%02s", eyear, emonth, eday))
 
 	for rows.Next() {
 		log.Println("scanning row...")
