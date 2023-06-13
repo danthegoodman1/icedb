@@ -271,7 +271,7 @@ class IceDB:
                     )
 
                     self.ddb.execute(q, [
-                        list(map(lambda x: "'s3://{}/{}/{}'".format(self.s3bucket, partition, x), actual_files))
+                        list(map(lambda x: "s3://{}/{}/{}".format(self.s3bucket, partition, x), actual_files))
                     ])
 
                     # get the new file size
