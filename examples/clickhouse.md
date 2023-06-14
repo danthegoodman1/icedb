@@ -8,10 +8,10 @@ From the root folder, run
 docker compose up -d
 ```
 
-Then
+Then run the simple example to make sure you have some data in IceDB:
 
 ```
-bash ch-setup.sh
+python examples/simple.py
 ```
 
 To run the query against clickhouse just like the DuckDB example in `simple.py`, run:
