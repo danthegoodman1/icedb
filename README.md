@@ -137,9 +137,9 @@ If you wanted to replace rows with the most recent version, you could write a cu
 
 ```sql
 select
-    argMax(user_id, _row_id),
-    argMax(properties, _row_id),
-    argMax(timestamp, _row_id),
+    argMax(user_id, timestamp),
+    argMax(properties, timestamp),
+    max(timestamp),
     _row_id
 from source_files
 group by _row_id
