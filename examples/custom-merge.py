@@ -78,16 +78,12 @@ example_events = [{
 ice.insert(example_events)
 ice.insert(example_events)
 
-# see the number of files and aggregation result before we merge
+# see the number of files and aggregation result before we merge, see the row count is higher here
 print('got files', len(get_files(2023,1,1, 2023,8,1)))
 print(ddb.sql('''
-select sum(clicks::INT8) user_id, event
+select sum(clicks::INT8), count(*) as row_count, user_id, event
 from icedb(start_month:=2, end_month:=8)
 group by user_id, event
-'''))
-print(ddb.sql('''
-select count(*)
-from icedb(start_month:=2, end_month:=8)
 '''))
 
 # merge twice so both partitions are merged
@@ -102,13 +98,9 @@ from read_parquet(?, hive_partitioning=1)
 group by user_id, event
 ''')
 
-# you will see the aggregation values are the same after the merge, but the file count is smaller
+# you will see the aggregation values are the same after the merge, but the row count is smaller
 print(ddb.sql('''
-select sum(clicks::INT8), user_id, event
+select sum(clicks::INT8), count(*) as row_count, user_id, event
 from icedb(start_month:=2, end_month:=8)
 group by user_id, event
-'''))
-print(ddb.sql('''
-select count(*)
-from icedb(start_month:=2, end_month:=8)
 '''))
