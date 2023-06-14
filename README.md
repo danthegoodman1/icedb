@@ -1,6 +1,6 @@
 # IceDB
 
-IceDB is a truly serverless OLAP/data lake hybrid in-process database framework optimized for event-based data. It combines DuckDB, Parquet files, and S3 storage to fully decouple storage and compute, while only paying for compute during query execution time.
+IceDB is a truly serverless OLAP/data lake hybrid in-process database framework optimized for event-based data. It combines DuckDB, Parquet files, and S3 storage to fully decouple storage and compute, while only paying for compute during query execution time. It also decouples from both the database and programming language, so you can use IceDB in DuckDB, Pandas (Python), a Golang binary bound to ClickHouse, and more.
 
 _Massive WIP_
 
