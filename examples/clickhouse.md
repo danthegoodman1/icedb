@@ -20,7 +20,9 @@ Then run the simple example to make sure you have some data in IceDB:
 python examples/simple.py
 ```
 
-To run the query against clickhouse just like the DuckDB example in `simple.py`, run:
+To run the query against clickhouse just like the DuckDB example in `examples/simple.py`, run:
 ```
 docker exec ch clickhouse-client -q "SELECT sum(JSONExtractInt(properties, 'numtime')), user_id from s3(get_files(2023,2,1, 2023,8,1), 'user', 'password', 'Parquet') where event = 'page_load' group by user_id FORMAT Pretty;"
 ```
+
+This will show the same results as found in the final query of `examples/simple.py`
