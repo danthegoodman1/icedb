@@ -98,10 +98,12 @@ The default query is:
 
 ```sql
 select *
-from read_parquet(?, hive_partitioning=1)
+from source_files
 ```
 
 The `?` **must be included**, and is the list of files being merged.
+
+`source_files` is just an alias for `read_parquet(?, hive_partitioning=1)`, which will be string-replaced if it exists.
 
 ### Handling `_row_id`
 
@@ -114,7 +116,7 @@ select
     user_id,
     sum(clicks) as clicks,
     gen_random_uuid()::TEXT as _row_id
-from read_parquet(?, hive_partitioning=1)
+from source_files
 group by user_id
 ```
 

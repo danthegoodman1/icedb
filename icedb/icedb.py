@@ -264,10 +264,10 @@ class IceDB:
                         {}
                     ) TO '{}'
                     '''.format(
-                        '''
+                        ('''
                         select *
-                        from read_parquet(?, hive_partitioning=1)
-                        ''' if custom_merge_query is None else custom_merge_query,
+                        from source_files
+                        ''' if custom_merge_query is None else custom_merge_query).replace("source_files", "read_parquet(?, hive_partitioning=1)"),
                         's3://{}/{}'.format(self.s3bucket, new_f_path)
                     )
 
