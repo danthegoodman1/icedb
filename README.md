@@ -114,6 +114,41 @@ The `?` **must be included**, and is the list of files being merged.
 
 ### Handling `_row_id`
 
+#### Deduplicating Data on Merge
+
+By default, no action is taken on `_row_id`. However you can use this to deduplicate in both analytical queries, and custom merge queries.
+
+For example, if you wanted merges to take any (but only a single) value for a given `_row_id`, you might use:
+
+```sql
+select
+    any_value(user_id),
+    any_value(properties),
+    _row_id
+from source_files
+group by _row_id
+```
+
+Note that this will only deduplicate for a single merged parquet file, to guarantee single rows you much still employ deduplication in your analytical queries.
+
+#### Replacing Data on Merge
+
+If you wanted to replace rows with the most recent version, you could write a custom merge query that looks like:
+
+```sql
+select
+    argMax(user_id, _row_id),
+    argMax(properties, _row_id),
+    argMax(timestamp, _row_id),
+    _row_id
+from source_files
+group by _row_id
+```
+
+Like deduplication, you must handle this in your queries too if you want to guarantee getting the single latest row.
+
+#### Aggregating Data on Merge
+
 If you are aggregating, you must include a new `_row_id`. If you are replacing this should come through choosing the correct row to replace.
 
 Example aggregation merge query:
