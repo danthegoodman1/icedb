@@ -127,7 +127,7 @@ class IceDB:
             partrows = partmap[part]
 
             # use a DF for inserting into duckdb
-            first_row = self.formatRow(partrows[0])
+            first_row = self.formatRow(partrows[0].copy()) # need to make copy so we don't modify
             first_row['_row_id'] = str(uuid4()) if self.unique_row_key is None else partrows[0][self.unique_row_key]
             for key in first_row:
                 # convert everything to array
@@ -136,7 +136,7 @@ class IceDB:
             if len(partrows) > 1:
                 # we need to add more rows
                 for row in partrows[1:]:
-                    new_row = self.formatRow(row)
+                    new_row = self.formatRow(row.copy()) # need to make copy so we don't modify
                     new_row['_row_id'] = str(uuid4()) if self.unique_row_key is None else row[self.unique_row_key]
                     df.loc[len(df)] = new_row
 
