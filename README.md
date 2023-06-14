@@ -10,7 +10,14 @@ See https://blog.danthegoodman.com/icedb-v2
 
 There is a bug in duckdb right now where `read_parquet` will fire a table macro twice, and show the file twice when listing them, but this doesn't affect actual query results: https://github.com/duckdb/duckdb/issues/7897
 
-In the meantime, consider this when listing files in SQL, and add some caching in your function if needed.
+In the meantime, consider this when listing files in SQL, and add some caching in your function if needed. See a simple method in ./examples/custom-merge.py
+
+## Examples
+
+- [Simple DuckDB query example](examples/simple.py)
+- [Custom Merge Query](examples/custom-merge.py)
+- [Query with a Golang binary bound to ClickHouse](examples/clickhouse.md) - Shows the power of both portability of IceDB in both language and query execution.
+- [Segment Sink Example](examples/segment-sink.py) - getting events directly from a Customer Data Platform like Segment.com
 
 ## Usage
 
@@ -143,3 +150,20 @@ def get_partition_range(table: str, syear: int, smonth: int, sday: int, eyear: i
     return ['table={}/y={}/m={}/d={}'.format(table, '{}'.format(syear).zfill(4), '{}'.format(smonth).zfill(2), '{}'.format(sday).zfill(2)),
             'table={}/y={}/m={}/d={}'.format(table, '{}'.format(eyear).zfill(4), '{}'.format(emonth).zfill(2), '{}'.format(eday).zfill(2))]
 ```
+
+## Meta Store Schema
+
+The meta store uses the following DB table:
+```sql
+create table if not exists known_files (
+    partition TEXT NOT NULL,
+    filename TEXT NOT NULL,
+    filesize INT8 NOT NULL,
+    active BOOLEAN NOT NULL DEFAULT TRUE,
+    _created TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    _updated TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY(active, partition, filename)
+)
+```
+
+This means that you can simply query this table from other languages as shown in the [Golang example](ch/user_scripts/main.go), and [query it from other databases like ClickHouse](examples/clickhouse.md)

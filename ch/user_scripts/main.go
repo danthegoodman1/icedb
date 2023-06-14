@@ -65,10 +65,10 @@ func main() {
 		if err != nil {
 			log.Fatal("error scanning rows:", err)
 		}
-		files = append(files, filename)
+		files = append(files, partition+"/"+filename)
 	}
 
-	out := strings.Join(files, ", ")
+	out := fmt.Sprintf("http://minio:9000/testbucket/{%s}", strings.Join(files, ","))
 	log.Println("writing out:", out)
 	fmt.Print(out)
 }
