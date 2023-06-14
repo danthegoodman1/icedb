@@ -124,6 +124,7 @@ For example, if you wanted merges to take any (but only a single) value for a gi
 select
     any_value(user_id),
     any_value(properties),
+    any_value(timestamp),
     _row_id
 from source_files
 group by _row_id
