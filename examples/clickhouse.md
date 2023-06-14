@@ -8,6 +8,12 @@ From the root folder, run
 docker compose up -d
 ```
 
+Install the requirements:
+
+```
+pip install duckdb git+https://github.com/danthegoodman1/icedb
+```
+
 Then run the simple example to make sure you have some data in IceDB:
 
 ```
