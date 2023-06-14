@@ -103,7 +103,7 @@ from source_files
 
 The `?` **must be included**, and is the list of files being merged.
 
-`source_files` is just an alias for `read_parquet(?, hive_partitioning=1)`, which will be string-replaced if it exists.
+`source_files` is just an alias for `read_parquet(?, hive_partitioning=1)`, which will be string-replaced if it exists. Note that the `hive_partitioning` columns are virtual, and do not appear in the merged parquet file, therefore is it not needed.
 
 ### Handling `_row_id`
 

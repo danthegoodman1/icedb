@@ -87,11 +87,13 @@ group by user_id, event
 '''))
 
 # merge twice so both partitions are merged
+# we can use the source_files alias
 ice.merge_files(100_000, partition_prefix='custom-merge/', custom_merge_query='''
 select sum(clicks) as clicks, user_id, event
-from read_parquet(?, hive_partitioning=1)
+from source_files
 group by user_id, event
 ''')
+# or directly use the read_parquet if we need to for what ever reason
 ice.merge_files(100_000, partition_prefix='custom-merge/', custom_merge_query='''
 select sum(clicks) as clicks, user_id, event
 from read_parquet(?, hive_partitioning=1)
