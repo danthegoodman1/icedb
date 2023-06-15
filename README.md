@@ -18,6 +18,7 @@ In the meantime, consider this when listing files in SQL, and add some caching i
 - [Custom Merge Query](examples/custom-merge.py)
 - [Query with a Golang binary bound to ClickHouse](examples/clickhouse.md) - Shows the power of both portability of IceDB in both language and query execution.
 - [Segment Sink Example](examples/segment-sink.py) - getting events directly from a Customer Data Platform like Segment.com
+- [Full production-ready Segment sink API with multiple table support, pre-installed extensions, Dockerfile](https://github.com/danthegoodman1/IceDBSegment)
 
 ## Usage
 
