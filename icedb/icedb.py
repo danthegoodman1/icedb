@@ -226,12 +226,11 @@ class IceDB:
                         buf.append(row)
                         fsum += row[2]
 
-        # select the files for update to make sure they are all still active, anything not active we drop (from colliding merges)
-        if len(buf) > 0:
-            partition = buf[0][0]
-            # merge these files, update DB
-            print('I have files for merging! going to lock them now')
-            with self.conn:
+            # select the files for update to make sure they are all still active, anything not active we drop (from colliding merges)
+            if len(buf) > 0:
+                partition = buf[0][0]
+                # merge these files, update DB
+                print('I have files for merging! going to lock them now')
                 with self.conn.cursor() as mergecur:
                     # lock the files up
                     if self.set_isolation:
