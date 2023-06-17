@@ -173,7 +173,7 @@ class IceDB:
         buf = []
         fsum = 0
         with self.conn.cursor() as mycur:
-            print('got cursor')
+            print('1 got cursor')
             try:
                 if self.set_isolation:
                     # don't need serializable isolation here, just need a snapshot
@@ -181,6 +181,7 @@ class IceDB:
                     mycur.execute("set transaction isolation level repeatable read")
 
                 # need to manually start cursor because this is "not in a transaction yet"?
+                print('1 executing')
                 mycur.execute('''
                 declare {} cursor for
                 select partition, filename, filesize
@@ -231,7 +232,8 @@ class IceDB:
 
                         buf.append(row)
                         fsum += row[2]
-            except:
+            except Exception as e:
+                print("failed merge", e)
                 self.conn.rollback()
 
             # select the files for update to make sure they are all still active, anything not active we drop (from colliding merges)
@@ -310,6 +312,7 @@ class IceDB:
                         return len(actual_files)
                     except:
                         self.conn.rollback()
+        print('1 i had no files for merging')
         return 0
 
     def get_files(self, gte_part: str, lte_part: str) -> List[str]:
