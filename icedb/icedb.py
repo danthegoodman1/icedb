@@ -227,6 +227,7 @@ class IceDB:
                         fsum += row[2]
 
             # select the files for update to make sure they are all still active, anything not active we drop (from colliding merges)
+            # if there is only 1 file, then we have nothing to merge
             if len(buf) > 1:
                 partition = buf[0][0]
                 # merge these files, update DB
