@@ -183,7 +183,7 @@ class IceDB:
                 # need to manually start cursor because this is "not in a transaction yet"?
                 print('1 executing')
                 mycur.execute('''
-                    select 1
+                    BEGIN
                 ''')
                 mycur.execute('''
                 declare {} cursor for
