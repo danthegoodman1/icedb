@@ -1,6 +1,6 @@
 from setuptools import setup, find_packages
 
-VERSION = '0.0.64'
+VERSION = '0.0.65'
 DESCRIPTION = 'IceDB'
 LONG_DESCRIPTION = 'IceDB in-process serverless OLAP powered by DuckDB'
 

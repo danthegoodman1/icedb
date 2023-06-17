@@ -200,14 +200,14 @@ class IceDB:
                     """.format(200, curid))
                     rows = mycur.fetchall()
                     if len(rows) == 0:
-                        self.conn.commit()
+                        self.conn.rollback()
                         break
                     for row in rows:
                         if len(buf) > 0 and row[0] != buf[0][0]:
                             if len(buf) > 1:
                                 # we've hit the end of the partition and we can merge it
                                 print("I've hit the end of the partition with files to merge")
-                                self.conn.commit()
+                                self.conn.rollback()
                                 break
 
                             # we've hit the next partition, clear the buffer
@@ -218,13 +218,13 @@ class IceDB:
                         # check if we would exceed the max file size
                         if len(buf) > 1 and fsum > maxFileSize:
                             print('I hit the max file size with {} bytes, going to start merging!'.format(fsum))
-                            self.conn.commit()
+                            self.conn.rollback()
                             break
 
                         # check if we exceeded the max file count, only if valid count
                         if len(buf) > 1 and len(buf) >= maxFileCount:
                             print('I hit the max file count with {} files, going to start merging!'.format(len(buf)))
-                            self.conn.commit()
+                            self.conn.rollback()
                             break
 
                         buf.append(row)
