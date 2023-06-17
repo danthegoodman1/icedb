@@ -96,6 +96,7 @@ class IceDB:
                             filename TEXT NOT NULL,
                             filesize INT8 NOT NULL,
                             active BOOLEAN NOT NULL DEFAULT TRUE,
+                            rows INT8 NOT NULL,
                             _created TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                             _updated TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                             PRIMARY KEY(active, partition, filename)
@@ -270,7 +271,7 @@ class IceDB:
                         mergecur.execute("set transaction isolation level serializable")
 
                     q = '''
-                        select filename
+                        select filename, rows
                         from known_files
                         where active = true
                         and partition = '{}'
@@ -280,6 +281,10 @@ class IceDB:
                     mergecur.execute(q)
                     rows = mergecur.fetchall()
                     actual_files = list(map(lambda x: x[0], rows))
+                    total_rows = 0
+                    for actual_f in rows:
+                        total_rows += actual_f[1]
+
                     if len(actual_files) == 0:
                         print('no actual files during merge, were there competing merges? I am exiting.')
                         return 0
@@ -326,8 +331,8 @@ class IceDB:
 
                     # insert the new file
                     mergecur.execute('''
-                        insert into known_files (filename, filesize, partition)  VALUES ('{}', {}, '{}')
-                    '''.format(new_f_name, new_f_size, partition))
+                        insert into known_files (filename, filesize, partition, rows)  VALUES ('{}', {}, '{}', {})
+                    '''.format(new_f_name, new_f_size, partition, total_rows))
 
                     conn.commit()
                     return len(actual_files)
