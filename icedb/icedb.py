@@ -165,8 +165,8 @@ class IceDB:
             try:
                 with conn.cursor() as cursor:
                     cursor.execute('''
-                        insert into known_files (filename, filesize, partition)  VALUES ('{}', {}, '{}')
-                    '''.format(filename, fileSize, part))
+                        insert into known_files (filename, filesize, partition, rows)  VALUES ('{}', {}, '{}', {})
+                    '''.format(filename, fileSize, part, len(partrows)))
                     conn.commit()
             finally:
                 conn.close()
