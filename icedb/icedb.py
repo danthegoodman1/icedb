@@ -21,7 +21,6 @@ class IceDB:
     sortOrder: List[str]
     formatRow: FormatRowType
     ddb: duckdb
-    conn: psycopg2.extensions.connection
     s3region: str
     s3accesskey: str
     s3secretkey: str
@@ -61,8 +60,6 @@ class IceDB:
         self.s3bucket = s3bucket
 
         self.pgdsn = pgdsn
-        self.conn = psycopg2.connect(pgdsn)
-        self.conn.autocommit = False
 
         self.unique_row_key = unique_row_key
 
@@ -89,22 +86,31 @@ class IceDB:
 
         if create_table:
             # trick for using autocommit
-            with self.conn.cursor() as cursor:
-                # make sure the table exists
-                cursor.execute('''
-                    create table if not exists known_files (
-                        partition TEXT NOT NULL,
-                        filename TEXT NOT NULL,
-                        filesize INT8 NOT NULL,
-                        active BOOLEAN NOT NULL DEFAULT TRUE,
-                        _created TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                        _updated TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                        PRIMARY KEY(active, partition, filename)
-                    )
-                ''')
-                self.conn.commit()
+            conn = self.getconn()
+            try:
+                with conn.cursor() as cursor:
+                    # make sure the table exists
+                    cursor.execute('''
+                        create table if not exists known_files (
+                            partition TEXT NOT NULL,
+                            filename TEXT NOT NULL,
+                            filesize INT8 NOT NULL,
+                            active BOOLEAN NOT NULL DEFAULT TRUE,
+                            _created TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                            _updated TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                            PRIMARY KEY(active, partition, filename)
+                        )
+                    ''')
+                    conn.commit()
+            finally:
+                conn.close()
     def close(self):
-        self.conn.close()
+        pass
+
+    def getconn(self):
+        conn = psycopg2.connect(self.pgdsn)
+        conn.autocommit = False
+        return conn
 
     def insert(self, rows: List[dict]) -> List[str]:
         """
@@ -154,11 +160,15 @@ class IceDB:
             fileSize = obj['ContentLength']
 
             # insert into meta store
-            with self.conn.cursor() as cursor:
-                cursor.execute('''
-                    insert into known_files (filename, filesize, partition)  VALUES ('{}', {}, '{}')
-                '''.format(filename, fileSize, part))
-                self.conn.commit()
+            conn = self.getconn()
+            try:
+                with conn.cursor() as cursor:
+                    cursor.execute('''
+                        insert into known_files (filename, filesize, partition)  VALUES ('{}', {}, '{}')
+                    '''.format(filename, fileSize, part))
+                    conn.commit()
+            finally:
+                conn.close()
 
         return final_files
 
@@ -173,8 +183,9 @@ class IceDB:
         curid = "a"+str(uuid4()).replace("-", "")
         buf = []
         fsum = 0
-        with self.conn.cursor() as mycur:
-            try:
+        conn = self.getconn()
+        try:
+            with conn.cursor() as mycur:
                 if self.set_isolation:
                     # don't need serializable isolation here, just need a snapshot
                     # if the files change between the next transaction, then they will be omitted from the first query selecting them
@@ -202,7 +213,7 @@ class IceDB:
                     """.format(200, curid))
                     rows = mycur.fetchall()
                     if len(rows) == 0:
-                        self.conn.rollback()
+                        conn.rollback()
                         keepGoing = False
                         break
                     for row in rows:
@@ -210,7 +221,7 @@ class IceDB:
                             if len(buf) > 1:
                                 # we've hit the end of the partition and we can merge it
                                 print("I've hit the end of the partition with files to merge")
-                                self.conn.rollback()
+                                conn.rollback()
                                 keepGoing = False
                                 break
 
@@ -222,113 +233,122 @@ class IceDB:
                         # check if we would exceed the max file size
                         if len(buf) > 1 and fsum > maxFileSize:
                             print('I hit the max file size with {} bytes, going to start merging!'.format(fsum))
-                            self.conn.rollback()
+                            conn.rollback()
                             keepGoing = False
                             break
 
                         # check if we exceeded the max file count, only if valid count
                         if len(buf) > 1 and len(buf) >= maxFileCount:
                             print('I hit the max file count with {} files, going to start merging!'.format(len(buf)))
-                            self.conn.rollback()
+                            conn.rollback()
                             keepGoing = False
                             break
 
                         buf.append(row)
                         fsum += row[2]
-            except Exception as e:
-                print("failed merge", e)
-                exc_type, exc_obj, exc_tb = sys.exc_info()
-                fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-                print(exc_type, fname, exc_tb.tb_lineno)
-                self.conn.rollback()
+        except Exception as e:
+            print("failed merge", e)
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+            print(exc_type, fname, exc_tb.tb_lineno)
+            conn.rollback()
+        finally:
+            conn.close()
 
-            # select the files for update to make sure they are all still active, anything not active we drop (from colliding merges)
-            # if there is only 1 file, then we have nothing to merge
-            if len(buf) > 1:
-                partition = buf[0][0]
-                # merge these files, update DB
-                print('I have files for merging! going to lock them now')
-                with self.conn.cursor() as mergecur:
-                    try:
-                        # lock the files up
-                        if self.set_isolation:
-                            # now we need serializable isolation to protect against concurrent merges
-                            mergecur.execute("set transaction isolation level serializable")
+        # select the files for update to make sure they are all still active, anything not active we drop (from colliding merges)
+        # if there is only 1 file, then we have nothing to merge
+        if len(buf) > 1:
+            partition = buf[0][0]
+            # merge these files, update DB
+            print('I have files for merging! going to lock them now')
+            conn = self.getconn()
+            try:
+                with conn.cursor() as mergecur:
+                    # lock the files up
+                    if self.set_isolation:
+                        # now we need serializable isolation to protect against concurrent merges
+                        mergecur.execute("set transaction isolation level serializable")
 
-                        q = '''
-                            select filename
-                            from known_files
-                            where active = true
-                            and partition = '{}'
-                            and filename in ({})
-                            for update
-                        '''.format(partition, ','.join(list(map(lambda x: "'{}'".format(x[1]), buf))))
-                        mergecur.execute(q)
-                        rows = mergecur.fetchall()
-                        actual_files = list(map(lambda x: x[0], rows))
-                        if len(actual_files) == 0:
-                            print('no actual files during merge, were there competing merges? I am exiting.')
-                            return 0
-                        if len(actual_files) == 1:
-                            print('only got a single file when locking files for merging, were there competing merges? I am exiting.')
-                            return 0
-                        new_f_name = '{}.parquet'.format(str(uuid4()))
-                        new_f_path = partition + "/" + new_f_name
-                        
-                        # copy the files in S3
-                        q = '''
-                        COPY (
-                            {}
-                        ) TO '{}'
-                        '''.format(
-                            ('''
-                            select *
-                            from source_files
-                            ''' if custom_merge_query is None else custom_merge_query).replace("source_files", "read_parquet(?, hive_partitioning=1)"),
-                            's3://{}/{}'.format(self.s3bucket, new_f_path)
-                        )
+                    q = '''
+                        select filename
+                        from known_files
+                        where active = true
+                        and partition = '{}'
+                        and filename in ({})
+                        for update
+                    '''.format(partition, ','.join(list(map(lambda x: "'{}'".format(x[1]), buf))))
+                    mergecur.execute(q)
+                    rows = mergecur.fetchall()
+                    actual_files = list(map(lambda x: x[0], rows))
+                    if len(actual_files) == 0:
+                        print('no actual files during merge, were there competing merges? I am exiting.')
+                        return 0
+                    if len(actual_files) == 1:
+                        print('only got a single file when locking files for merging, were there competing merges? I am exiting.')
+                        return 0
+                    new_f_name = '{}.parquet'.format(str(uuid4()))
+                    new_f_path = partition + "/" + new_f_name
+                    
+                    # copy the files in S3
+                    q = '''
+                    COPY (
+                        {}
+                    ) TO '{}'
+                    '''.format(
+                        ('''
+                        select *
+                        from source_files
+                        ''' if custom_merge_query is None else custom_merge_query).replace("source_files", "read_parquet(?, hive_partitioning=1)"),
+                        's3://{}/{}'.format(self.s3bucket, new_f_path)
+                    )
 
-                        self.ddb.execute(q, [
-                            list(map(lambda x: "s3://{}/{}/{}".format(self.s3bucket, partition, x), actual_files))
-                        ])
+                    self.ddb.execute(q, [
+                        list(map(lambda x: "s3://{}/{}/{}".format(self.s3bucket, partition, x), actual_files))
+                    ])
 
-                        # get the new file size
-                        obj = self.s3.head_object(
-                            Bucket=self.s3bucket,
-                            Key=new_f_path
-                        )
-                        new_f_size = obj['ContentLength']
+                    # get the new file size
+                    obj = self.s3.head_object(
+                        Bucket=self.s3bucket,
+                        Key=new_f_path
+                    )
+                    new_f_size = obj['ContentLength']
 
-                        # insert the new file
-                        mergecur.execute('''
-                            insert into known_files (filename, filesize, partition)  VALUES ('{}', {}, '{}')
-                        '''.format(new_f_name, new_f_size, partition))
+                    # insert the new file
+                    mergecur.execute('''
+                        insert into known_files (filename, filesize, partition)  VALUES ('{}', {}, '{}')
+                    '''.format(new_f_name, new_f_size, partition))
 
-                        # update the old files
-                        q = '''
-                            update known_files
-                            set active = false
-                            and _updated = NOW()
-                            where active = true
-                            and partition = '{}'
-                            and filename in ({})
-                        '''.format(partition, ','.join(list(map(lambda x: "'{}'".format(x), actual_files))))
-                        mergecur.execute(q)
-                        self.conn.commit()
-                        return len(actual_files)
-                    except:
-                        self.conn.rollback()
+                    # update the old files
+                    q = '''
+                        update known_files
+                        set active = false
+                        and _updated = NOW()
+                        where active = true
+                        and partition = '{}'
+                        and filename in ({})
+                    '''.format(partition, ','.join(list(map(lambda x: "'{}'".format(x), actual_files))))
+                    mergecur.execute(q)
+                    conn.commit()
+                    return len(actual_files)
+            except:
+                conn.rollback()
+            finally:
+                conn.close()
         return 0
 
     def get_files(self, gte_part: str, lte_part: str) -> List[str]:
-        with self.conn.cursor() as mycur:
-            mycur.execute('''
-            select partition, filename
-            from known_files
-            where active = true
-            AND partition >= %s
-            AND partition <= %s
-            ''', (gte_part, lte_part))
-            rows = mycur.fetchall()
-            self.conn.commit()
-            return list(map(lambda x: 's3://{}/{}/{}'.format(self.s3bucket, x[0], x[1]), rows))
+        conn = self.getconn()
+        try:
+            with self.conn.cursor() as mycur:
+                mycur.execute('''
+                select partition, filename
+                from known_files
+                where active = true
+                AND partition >= %s
+                AND partition <= %s
+                ''', (gte_part, lte_part))
+                rows = mycur.fetchall()
+                conn.commit()
+                return list(map(lambda x: 's3://{}/{}/{}'.format(self.s3bucket, x[0], x[1]), rows))
+        finally:
+            conn.close()
