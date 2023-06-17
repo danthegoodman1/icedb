@@ -10,6 +10,7 @@ import psycopg2
 import boto3
 import botocore
 import psycopg2.extensions
+import sys
 
 PartitionFunctionType = Callable[[dict], str]
 FormatRowType = Callable[[dict], dict]
@@ -208,7 +209,6 @@ class IceDB:
                                 # we've hit the end of the partition and we can merge it
                                 print("I've hit the end of the partition with files to merge")
                                 self.conn.rollback()
-                                print(1)
                                 break
 
                             # we've hit the next partition, clear the buffer
@@ -232,6 +232,9 @@ class IceDB:
                         fsum += row[2]
             except Exception as e:
                 print("failed merge", e)
+                exc_type, exc_obj, exc_tb = sys.exc_info()
+                fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+                print(exc_type, fname, exc_tb.tb_lineno)
                 self.conn.rollback()
 
             # select the files for update to make sure they are all still active, anything not active we drop (from colliding merges)
