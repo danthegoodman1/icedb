@@ -349,7 +349,6 @@ class IceDB:
                 AND partition <= %s
                 ''', (gte_part, lte_part))
                 rows = mycur.fetchall()
-                mycur.execute('commit')
                 return list(map(lambda x: 's3://{}/{}/{}'.format(self.s3bucket, x[0], x[1]), rows))
         finally:
             conn.close()
