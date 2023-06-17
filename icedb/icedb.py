@@ -313,11 +313,6 @@ class IceDB:
                     )
                     new_f_size = obj['ContentLength']
 
-                    # insert the new file
-                    mergecur.execute('''
-                        insert into known_files (filename, filesize, partition)  VALUES ('{}', {}, '{}')
-                    '''.format(new_f_name, new_f_size, partition))
-
                     # update the old files
                     q = '''
                         update known_files
@@ -328,6 +323,12 @@ class IceDB:
                         and filename in ({})
                     '''.format(partition, ','.join(list(map(lambda x: "'{}'".format(x), actual_files))))
                     mergecur.execute(q)
+
+                    # insert the new file
+                    mergecur.execute('''
+                        insert into known_files (filename, filesize, partition)  VALUES ('{}', {}, '{}')
+                    '''.format(new_f_name, new_f_size, partition))
+
                     conn.commit()
                     return len(actual_files)
             except:
