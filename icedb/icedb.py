@@ -183,9 +183,6 @@ class IceDB:
                 # need to manually start cursor because this is "not in a transaction yet"?
                 print('1 executing')
                 mycur.execute('''
-                    BEGIN
-                ''')
-                mycur.execute('''
                 declare {} cursor for
                 select partition, filename, filesize
                 from known_files
