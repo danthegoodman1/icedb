@@ -61,7 +61,7 @@ class IceDB:
 
         self.pgdsn = pgdsn
         self.conn = psycopg2.connect(pgdsn)
-        self.conn.autocommit = True
+        self.conn.autocommit = False
 
         self.unique_row_key = unique_row_key
 
