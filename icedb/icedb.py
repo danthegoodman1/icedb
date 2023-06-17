@@ -200,6 +200,7 @@ class IceDB:
                     """.format(200, curid))
                     rows = mycur.fetchall()
                     if len(rows) == 0:
+                        print('got nothing')
                         self.conn.commit()
                         break
                     for row in rows:
