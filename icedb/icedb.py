@@ -339,7 +339,7 @@ class IceDB:
     def get_files(self, gte_part: str, lte_part: str) -> List[str]:
         conn = self.getconn()
         try:
-            with self.conn.cursor() as mycur:
+            with conn.cursor() as mycur:
                 mycur.execute('''
                 select partition, filename
                 from known_files
