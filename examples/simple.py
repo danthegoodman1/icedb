@@ -64,7 +64,7 @@ example_events = [{
     "user_id": "a",
     "properties": {
         "hey": "ho",
-        "numtime": 123,
+        "numtime": 1,
         "nested_dict": {
             "ee": "fff"
         }
@@ -75,7 +75,7 @@ example_events = [{
     "user_id": "b",
     "properties": {
         "hey": "hoergergergrergereg",
-        "numtime": 933,
+        "numtime": 1,
         "nested_dict": {
             "ee": "fff"
         }
@@ -86,7 +86,7 @@ example_events = [{
     "user_id": "a",
     "properties": {
         "hey": "ho",
-        "numtime": 222,
+        "numtime": 1,
         "nested_dict": {
             "ee": "fff"
         }

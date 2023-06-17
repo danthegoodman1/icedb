@@ -96,7 +96,6 @@ class IceDB:
                             filename TEXT NOT NULL,
                             filesize INT8 NOT NULL,
                             active BOOLEAN NOT NULL DEFAULT TRUE,
-                            rows INT8 NOT NULL,
                             _created TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                             _updated TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                             PRIMARY KEY(active, partition, filename)
@@ -109,9 +108,9 @@ class IceDB:
         pass
 
     def getconn(self):
-        conn = psycopg2.connect(self.pgdsn)
-        conn.autocommit = False
-        return conn
+        pgc = psycopg2.connect(self.pgdsn)
+        pgc.autocommit = False
+        return pgc
 
     def insert(self, rows: List[dict]) -> List[str]:
         """
@@ -165,8 +164,8 @@ class IceDB:
             try:
                 with conn.cursor() as cursor:
                     cursor.execute('''
-                        insert into known_files (filename, filesize, partition, rows)  VALUES ('{}', {}, '{}', {})
-                    '''.format(filename, fileSize, part, len(partrows)))
+                        insert into known_files (filename, filesize, partition)  VALUES ('{}', {}, '{}')
+                    '''.format(filename, fileSize, part))
                     conn.commit()
             finally:
                 conn.close()
@@ -271,7 +270,7 @@ class IceDB:
                         mergecur.execute("set transaction isolation level serializable")
 
                     q = '''
-                        select filename, rows
+                        select filename
                         from known_files
                         where active = true
                         and partition = '{}'
@@ -281,9 +280,6 @@ class IceDB:
                     mergecur.execute(q)
                     rows = mergecur.fetchall()
                     actual_files = list(map(lambda x: x[0], rows))
-                    total_rows = 0
-                    for actual_f in rows:
-                        total_rows += actual_f[1]
 
                     if len(actual_files) == 0:
                         print('no actual files during merge, were there competing merges? I am exiting.')
@@ -331,8 +327,8 @@ class IceDB:
 
                     # insert the new file
                     mergecur.execute('''
-                        insert into known_files (filename, filesize, partition, rows)  VALUES ('{}', {}, '{}', {})
-                    '''.format(new_f_name, new_f_size, partition, total_rows))
+                        insert into known_files (filename, filesize, partition)  VALUES ('{}', {}, '{}', {})
+                    '''.format(new_f_name, new_f_size, partition))
 
                     conn.commit()
                     return len(actual_files)
