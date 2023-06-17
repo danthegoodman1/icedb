@@ -208,6 +208,7 @@ class IceDB:
                                 # we've hit the end of the partition and we can merge it
                                 print("I've hit the end of the partition with files to merge")
                                 self.conn.rollback()
+                                print(1)
                                 break
 
                             # we've hit the next partition, clear the buffer
