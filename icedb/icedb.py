@@ -200,12 +200,14 @@ class IceDB:
                     """.format(200, curid))
                     rows = mycur.fetchall()
                     if len(rows) == 0:
+                        self.conn.commit()
                         break
                     for row in rows:
                         if len(buf) > 0 and row[0] != buf[0][0]:
                             if len(buf) > 1:
                                 # we've hit the end of the partition and we can merge it
                                 print("I've hit the end of the partition with files to merge")
+                                self.conn.commit()
                                 break
 
                             # we've hit the next partition, clear the buffer
@@ -216,11 +218,13 @@ class IceDB:
                         # check if we would exceed the max file size
                         if len(buf) > 1 and fsum > maxFileSize:
                             print('I hit the max file size with {} bytes, going to start merging!'.format(fsum))
+                            self.conn.commit()
                             break
 
                         # check if we exceeded the max file count, only if valid count
                         if len(buf) > 1 and len(buf) >= maxFileCount:
                             print('I hit the max file count with {} files, going to start merging!'.format(len(buf)))
+                            self.conn.commit()
                             break
 
                         buf.append(row)
@@ -228,15 +232,14 @@ class IceDB:
             except:
                 self.conn.rollback()
 
-        with self.conn.cursor() as mycur:
-            try:
-                # select the files for update to make sure they are all still active, anything not active we drop (from colliding merges)
-                # if there is only 1 file, then we have nothing to merge
-                if len(buf) > 1:
-                    partition = buf[0][0]
-                    # merge these files, update DB
-                    print('I have files for merging! going to lock them now')
-                    with self.conn.cursor() as mergecur:
+            # select the files for update to make sure they are all still active, anything not active we drop (from colliding merges)
+            # if there is only 1 file, then we have nothing to merge
+            if len(buf) > 1:
+                partition = buf[0][0]
+                # merge these files, update DB
+                print('I have files for merging! going to lock them now')
+                with self.conn.cursor() as mergecur:
+                    try:
                         # lock the files up
                         if self.set_isolation:
                             # now we need serializable isolation to protect against concurrent merges
@@ -301,9 +304,10 @@ class IceDB:
                             and filename in ({})
                         '''.format(partition, ','.join(list(map(lambda x: "'{}'".format(x), actual_files))))
                         mergecur.execute(q)
+                        self.conn.commit()
                         return len(actual_files)
-            except:
-                self.conn.rollback()
+                    except:
+                        self.conn.rollback()
         return 0
 
     def get_files(self, gte_part: str, lte_part: str) -> List[str]:
