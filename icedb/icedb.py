@@ -173,6 +173,7 @@ class IceDB:
         buf = []
         fsum = 0
         with self.conn.cursor() as mycur:
+            print('got cursor')
             try:
                 if self.set_isolation:
                     # don't need serializable isolation here, just need a snapshot
