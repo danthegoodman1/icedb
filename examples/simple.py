@@ -109,8 +109,8 @@ order by agg desc
 
 merged = ice.merge_files(100_000)
 print('merged', merged)
-# merged = ice.merge_files(100_000)
-# print('merged again', merged)
+merged = ice.merge_files(100_000)
+print('merged again', merged)
 
 # you will see the aggregation values are the same after the merge
 print(ddb.sql('''
