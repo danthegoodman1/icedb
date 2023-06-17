@@ -173,7 +173,6 @@ class IceDB:
         buf = []
         fsum = 0
         with self.conn.cursor() as mycur:
-            print('1 got cursor')
             try:
                 if self.set_isolation:
                     # don't need serializable isolation here, just need a snapshot
@@ -181,7 +180,6 @@ class IceDB:
                     mycur.execute("set transaction isolation level repeatable read")
 
                 # need to manually start cursor because this is "not in a transaction yet"?
-                print('1 executing')
                 mycur.execute('''
                 declare {} cursor for
                 select partition, filename, filesize
@@ -202,7 +200,6 @@ class IceDB:
                     """.format(200, curid))
                     rows = mycur.fetchall()
                     if len(rows) == 0:
-                        print('got nothing')
                         self.conn.commit()
                         break
                     for row in rows:
@@ -325,5 +322,4 @@ class IceDB:
             ''', (gte_part, lte_part))
             rows = mycur.fetchall()
             self.conn.commit()
-            print('get_files got {} files'.format(len(rows)))
             return list(map(lambda x: 's3://{}/{}/{}'.format(self.s3bucket, x[0], x[1]), rows))
