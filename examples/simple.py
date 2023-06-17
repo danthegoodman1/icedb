@@ -54,7 +54,7 @@ ddb.sql('''
     create macro if not exists get_f(start_year:=2023, start_month:=1, start_day:=1, end_year:=2023, end_month:=1, end_day:=1) as get_files(start_year, start_month, start_day, end_year, end_month, end_day)
 ''')
 ddb.sql('''
-    create macro if not exists icedb(start_year:=2023, start_month:=1, start_day:=1, end_year:=2023, end_month:=1, end_day:=1) as table select * from read_parquet(get_files(start_year, start_month, start_day, end_year, end_month, end_day), hive_partitioning=1)
+    create macro if not exists icedb(start_year:=2023, start_month:=1, start_day:=1, end_year:=2023, end_month:=1, end_day:=1) as table select * from read_parquet(get_files(start_year, start_month, start_day, end_year, end_month, end_day), hive_partitioning=1, filename=1)
 ''')
 
 # some sample data
@@ -119,6 +119,12 @@ from icedb(start_month:=2, end_month:=8)
 where event = 'page_load'
 group by month
 order by agg desc
+'''))
+
+print(ddb.sql('''
+select count(*), filename
+from icedb(start_month:=2, end_month:=8)
+group by filename
 '''))
 
 # you'll see the file count is smaller now
