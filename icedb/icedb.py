@@ -85,11 +85,9 @@ class IceDB:
             self.ddb.execute("SET extension_directory='{}'".format(duckdb_ext_dir))
 
         if create_table:
-            # trick for using autocommit
             conn = self.getconn()
             try:
                 with conn.cursor() as cursor:
-                    # make sure the table exists
                     cursor.execute('''
                         create table if not exists known_files (
                             partition TEXT NOT NULL,
@@ -101,7 +99,7 @@ class IceDB:
                             PRIMARY KEY(active, partition, filename)
                         )
                     ''')
-                    conn.commit()
+                    cursor.execute('commit')
             finally:
                 conn.close()
     def close(self):
@@ -166,7 +164,7 @@ class IceDB:
                     cursor.execute('''
                         insert into known_files (filename, filesize, partition)  VALUES ('{}', {}, '{}')
                     '''.format(filename, fileSize, part))
-                    conn.commit()
+                    cursor.execute('commit')
             finally:
                 conn.close()
 
@@ -260,7 +258,7 @@ class IceDB:
         if len(buf) > 1:
             partition = buf[0][0]
             # merge these files, update DB
-            print('I have files for merging! going to lock them now')
+            print('I have files for merging! going to lock them now, len:', len(buf))
             conn = self.getconn()
             try:
                 with conn.cursor() as mergecur:
@@ -318,7 +316,7 @@ class IceDB:
                     q = '''
                         update known_files
                         set active = false
-                        and _updated = NOW()
+                        , _updated = NOW()
                         where active = true
                         and partition = '{}'
                         and filename in ({})
@@ -327,13 +325,14 @@ class IceDB:
 
                     # insert the new file
                     mergecur.execute('''
-                        insert into known_files (filename, filesize, partition)  VALUES ('{}', {}, '{}', {})
+                        insert into known_files (filename, filesize, partition)  VALUES ('{}', {}, '{}')
                     '''.format(new_f_name, new_f_size, partition))
 
-                    conn.commit()
+                    mergecur.execute('commit')
                     return len(actual_files)
             except:
                 conn.rollback()
+                raise
             finally:
                 conn.close()
         return 0
@@ -350,7 +349,7 @@ class IceDB:
                 AND partition <= %s
                 ''', (gte_part, lte_part))
                 rows = mycur.fetchall()
-                conn.commit()
+                mycur.execute('commit')
                 return list(map(lambda x: 's3://{}/{}/{}'.format(self.s3bucket, x[0], x[1]), rows))
         finally:
             conn.close()

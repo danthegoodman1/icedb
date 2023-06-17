@@ -1,0 +1,159 @@
+### Insert Segment Rows
+POST http://localhost:8090/segment/insert
+Content-Type: application/json
+Authorization: Bearer test
+
+{
+	"messageId": "segment-test-message-qea97",
+	"timestamp": "2023-06-12T19:21:52.976Z",
+	"type": "page",
+	"email": "test@example.org",
+	"properties": {
+		"property1": 1,
+		"property2": "test",
+		"property3": true
+	},
+	"userId": "test-user-gk2i3",
+	"name": "Home Page"
+}
+
+### Insert Segment Rows
+POST http://localhost:8090/segment/insert
+Content-Type: application/json
+Authorization: Bearer test
+
+[
+  {
+    "messageId": "segment-test-message-qea97",
+    "timestamp": "2023-06-12T19:21:52.976Z",
+    "type": "page",
+    "email": "test@example.org",
+    "properties": {
+      "property1": 1,
+      "property2": "test",
+      "property3": true
+    },
+    "userId": "test-user-gk2i3",
+    "name": "Home Page"
+  },
+  {
+    "messageId": "segment-test-message-fewfw",
+    "timestamp": "2023-06-12T19:21:53.001Z",
+    "type": "page",
+    "email": "test@example.org",
+    "properties": {
+      "property1": 1,
+      "property2": "test",
+      "property3": true
+    },
+    "userId": "test-user-gk2i3",
+    "name": "Home Page"
+  }
+]
+
+### Merge segment
+POST http://localhost:8090/segment/merge
+Authorization: Bearer test
+
+### Query
+POST http://localhost:8090/query
+Content-Type: application/json
+Authorization: Bearer test
+
+{
+  "query": "select sum((properties::JSON->>'numtime')::int64) as agg, extract('month' from epoch_ms(ts)) as month from icedb(tabl:='test', start_month:=2, end_month:=8) where event = 'page_load' group by month order by agg desc",
+  "format": "csv"
+}
+
+### Query Segment
+POST http://localhost:8090/query
+Content-Type: application/json
+Authorization: Bearer test
+
+{
+  "query": "select _row_id, event, ts from icedb(tabl:='segment', start_year:=1, end_year:=8000)",
+  "format": "pretty"
+}
+
+### Query Segment
+POST http://localhost:8090/query
+Content-Type: application/json
+Authorization: Bearer test
+
+{
+  "query": "select filename from icedb(tabl:='segment', start_year:=1, end_year:=8000)",
+  "format": "pretty"
+}
+
+### Query Segment
+POST http://localhost:8090/query
+Content-Type: application/json
+Authorization: Bearer test
+
+{
+  "query": "select get_files(tabl:='segment', start_year:=1, end_year:=8000)",
+  "format": "pretty"
+}
+
+### Query Segment
+POST http://localhost:8090/query
+Content-Type: application/json
+Authorization: Bearer test
+
+{
+  "query": "select count(distinct _row_id), _row_id from icedb(tabl:='segment', start_year:=1, end_year:=8000) group by _row_id",
+  "format": "pretty"
+}
+
+### Query Segment
+POST http://localhost:8090/query
+Content-Type: application/json
+Authorization: Bearer test
+
+{
+  "query": "select * from icedb(tabl:='segment', start_year:=1, end_year:=8000)",
+  "format": "pretty"
+}
+
+### Query Segment
+POST http://localhost:8090/query
+Content-Type: application/json
+Authorization: Bearer test
+
+{
+  "query": "select count(filename) from icedb(tabl:='segment', start_year:=1, end_year:=8000)",
+  "format": "pretty"
+}
+
+### Query Segment
+POST https://icedb.cf.tangia.co/query
+Content-Type: application/json
+Authorization: Bearer gtrehrthrthtrhrthr
+
+{
+  "query": "select count(distinct filename) from icedb(tabl:='twitch-ext', start_year:=1, end_year:=8000)",
+  "format": "pretty"
+}
+
+### Query Segment
+
+
+### Query Segment
+POST http://localhost:8090/query
+Content-Type: application/json
+Authorization: Bearer test
+
+{
+  "query": "select count(*), _row_id, event, hash(properties) from icedb(tabl:='segment', start_year:=1, end_year:=8000) group by _row_id, event, hash(properties) order by _row_id limit 30",
+  "format": "pretty"
+}
+
+### Query Segment
+POST http://localhost:8090/query
+Content-Type: application/json
+Authorization: Bearer test
+
+{
+  "query": "select any_value(user_id) as user_id, any_value(event) as event, any_value(properties) as properties, any_value(og_payload) as og_payload, any_value(ts) as ts, _row_id from icedb(tabl:='segment', start_year:=1, end_year:=8000) group by _row_id",
+  "format": "pretty"
+}
