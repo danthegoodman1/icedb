@@ -183,6 +183,9 @@ class IceDB:
                 # need to manually start cursor because this is "not in a transaction yet"?
                 print('1 executing')
                 mycur.execute('''
+                    select 1
+                ''')
+                mycur.execute('''
                 declare {} cursor for
                 select partition, filename, filesize
                 from known_files
@@ -312,7 +315,6 @@ class IceDB:
                         return len(actual_files)
                     except:
                         self.conn.rollback()
-        print('1 i had no files for merging')
         return 0
 
     def get_files(self, gte_part: str, lte_part: str) -> List[str]:
