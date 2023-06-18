@@ -72,26 +72,10 @@ c = cache()
 
 def get_files(table: str, syear: int, smonth: int, sday: int, eyear: int, emonth: int, eday: int) -> list[str]:
     part_range = get_partition_range(table, syear, smonth, sday, eyear, emonth, eday)
-    # print('part range', part_range)
-
-    # use cache
-    if c.get() is None:
-        s = time() * 1000
-        res = ice.get_files(
-            part_range[0],
-            part_range[1]
-        )
-        print('got files in', time()*1000 - s)
-    else:
-        res = c.get()
-    
-    # cache or clear
-    if c.get() is None:
-        c.set(res)
-    else:
-        c.set(None)
-    # print('got files', res)
-    return res
+    return ice.get_files(
+        part_range[0],
+        part_range[1]
+    )
 
 def auth_header() -> bool:
     if "AUTH" not in os.environ:
@@ -140,7 +124,6 @@ def query():
     try:
         if "format" not in j:
             return "need to specify format!", 400
-        print('querying..')
         s = time()*1000
         result = ddb.execute(j['query'])
         print('got query res in', time()*1000-s)
