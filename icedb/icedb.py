@@ -31,6 +31,7 @@ class IceDB:
     set_isolation: bool
     unique_row_key: str = None
     custom_merge_query: str = None
+    row_group_size: int
 
     def __init__(
         self,
@@ -46,12 +47,14 @@ class IceDB:
         set_isolation=False,
         create_table=True,
         duckdb_ext_dir: str=None,
-        unique_row_key: str=None
+        unique_row_key: str=None,
+        row_group_size: int=10_000
     ):
         self.partitionStrategy = partitionStrategy
         self.sortOrder = sortOrder
         self.formatRow = formatRow
         self.set_isolation = set_isolation
+        self.row_group_size = row_group_size
 
         self.s3region = s3region
         self.s3accesskey = s3accesskey
@@ -147,8 +150,8 @@ class IceDB:
 
             # copy to parquet file
             self.ddb.sql('''
-                copy (select * from df order by {}) to '{}'
-            '''.format(', '.join(self.sortOrder), 's3://{}/{}'.format(self.s3bucket, fullpath)))
+                copy (select * from df order by {}) to '{}' (FORMAT PARQUET, ROW_GROUP_SIZE {})
+            '''.format(', '.join(self.sortOrder), 's3://{}/{}'.format(self.s3bucket, fullpath), self.row_group_size))
 
             # get file metadata
             obj = self.s3.head_object(
@@ -292,13 +295,14 @@ class IceDB:
                     q = '''
                     COPY (
                         {}
-                    ) TO '{}'
+                    ) TO '{}' (FORMAT PARQUET, ROW_GROUP_SIZE {})
                     '''.format(
                         ('''
                         select *
                         from source_files
                         ''' if custom_merge_query is None else custom_merge_query).replace("source_files", "read_parquet(?, hive_partitioning=1)"),
-                        's3://{}/{}'.format(self.s3bucket, new_f_path)
+                        's3://{}/{}'.format(self.s3bucket, new_f_path),
+                        self.row_group_size
                     )
 
                     self.ddb.execute(q, [
