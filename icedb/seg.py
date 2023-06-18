@@ -15,20 +15,21 @@ import tabulate # for markdown printing, and pipreqs to require it
 app = Flask(__name__)
 insert_interval_seconds = int(os.environ["INSERT_SEC"]) if "INSERT_SEC" in os.environ and os.environ["INSERT_SEC"].isdigit() else 3
 merge_interval_seconds = int(os.environ["MERGE_SEC"]) if "MERGE_SEC" in os.environ and os.environ["MERGE_SEC"].isdigit() else 6
+row_group_size = int(os.environ["ROW_GROUP_SIZE"]) if "ROW_GROUP_SIZE" in os.environ and os.environ["ROW_GROUP_SIZE"].isdigit() else 10_000
 
 def get_partition_range(table: str, syear: int, smonth: int, sday: int, eyear: int, emonth: int, eday: int) -> list[str]:
     return ['table={}/y={}/m={}/d={}'.format(table, '{}'.format(syear).zfill(4), '{}'.format(smonth).zfill(2), '{}'.format(sday).zfill(2)),
             'table={}/y={}/m={}/d={}'.format(table, '{}'.format(eyear).zfill(4), '{}'.format(emonth).zfill(2), '{}'.format(eday).zfill(2))]
 
 def part_segment(row: dict) -> str:
-    rowtime = datetime.fromisoformat(row['timestamp'])
+    rowtime = datetime.fromisoformat(row['receivedAt']) if 'receivedAt' in row else datetime.utcnow()
     # the `table=segment/` prefix makes it effectively the `segment` table
     part = 'table={}/y={}/m={}/d={}'.format(row["table"], '{}'.format(rowtime.year).zfill(4), '{}'.format(rowtime.month).zfill(2), '{}'.format(rowtime.day).zfill(2))
     return part
 
 def format_segment(row: dict) -> dict:
     final_row = {
-        "ts": datetime.fromisoformat(row['timestamp']).timestamp()*1000, # convert to ms
+        "ts": int(datetime.fromisoformat(row['receivedAt']).timestamp()*1000 if 'receivedAt' in row else datetime.utcnow().timestamp()*1000), # convert to ms
         "event": "", # replaced below
         "user_id": row['userId'] if 'userId' in row else row['anonymousId'],
         "anonymous": False if 'userId' in row else True,
@@ -57,7 +58,8 @@ ice = IceDB(
     create_table=os.environ["CREATE_TABLE"] == "1" if "CREATE_TABLE" in os.environ else False,
     formatRow=format_segment,
     duckdb_ext_dir='/app/duckdb_exts',
-    unique_row_key='messageId'
+    unique_row_key='messageId',
+    row_group_size=row_group_size
 )
 
 # Caching because of duckdb double-triggering with read_parquet. A normal var was causing Unbound access errors
