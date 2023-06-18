@@ -84,6 +84,12 @@ DuckDB uses the `httpfs` extension. See how to pre-install it into your runtime 
 
 and see the `extension_directory` setting: https://duckdb.org/docs/sql/configuration.html#:~:text=PHYSICAL_ONLY-,extension_directory,-Set%20the%20directory with the default of `$HOME/.duckdb/`
 
+## Merging
+
+Merging takes a `max_file_size`. This is the max file size that is considered for merging, as well as a threshold for when merging will start. This means that the actual final merged file size (by logic) is in theory 2*max_file_size, however due to parquet compression it hardly ever gets that close.
+
+For example if a max size is 10MB, and during a merge we have a 9MB file, then come across another 9MB file, then the threshold of 10MB is exceeded (18MB total) and those files will be merged. However with compression that final file might be only 12MB in size.
+
 ## Concurrent merges
 
 Concurrent merges won't break anything due to the isolation level employed in the meta store transactions, however there is a chance that competing merges can result in conflicts, and when one is detected the conflicting merge will exit. Instead, you can choose to immediately call `merge` again (or with a short, like 5 seconds) if you successfully merged files to ensure that lock contention stays low.
