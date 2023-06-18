@@ -17,6 +17,16 @@ Authorization: Bearer test
 	"name": "Home Page"
 }
 
+### Query Segment
+POST http://localhost:8090/query
+Content-Type: application/json
+Authorization: Bearer test
+
+{
+  "query": "select count(*) as c, count(distinct filename) as fn, count(distinct _row_id) as cd, sum((properties::JSON->>'property1')::int64) as aa, _row_id, event, hash(properties) as h from icedb(tabl:='segment', start_year:=1, end_year:=8000) group by _row_id, event, hash(properties) order by _row_id limit 30",
+  "format": "pretty"
+}
+
 ### Insert Segment Rows
 POST http://localhost:8090/segment/insert
 Content-Type: application/json
@@ -135,18 +145,6 @@ Authorization: Bearer gtrehrthrthtrhrthr
   "format": "pretty"
 }
 
-### Query Segment
-
-
-### Query Segment
-POST http://localhost:8090/query
-Content-Type: application/json
-Authorization: Bearer test
-
-{
-  "query": "select count(*), _row_id, event, hash(properties) from icedb(tabl:='segment', start_year:=1, end_year:=8000) group by _row_id, event, hash(properties) order by _row_id limit 30",
-  "format": "pretty"
-}
 
 ### Query Segment
 POST http://localhost:8090/query
