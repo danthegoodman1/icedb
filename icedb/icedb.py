@@ -386,14 +386,14 @@ class IceDB:
                 ''')
                 rows = mycur.fetchall()
 
+                mycur.execute('commit')
+
                 # remove from s3 (continue if not found)
                 for deleted in rows:
                     self.s3.delete_object(
                         Bucket=self.s3bucket,
                         Key=deleted[0] + '/' + deleted[1]
                     )
-
-                mycur.execute('commit')
                 return list(map(lambda x: 's3://{}/{}/{}'.format(self.s3bucket, x[0], x[1]), rows))
         except Exception as e:
             raise e
