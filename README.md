@@ -100,6 +100,12 @@ For example in the use case where a partition might look like `y=YYYY/m=MM/d=DD`
 
 You should run a second, slower merge internal in `ASC` order that fully optimizes older partitions. These merges can be much large in file size and count, as they are less likely to conflict with active queries. Say this is run every 5 or 10 minutes.
 
+## Cleaning Merged Files
+
+Using the `remove_inactive_parts` method, you can delete files with some minimum age that are no longer active. This helps keep S3 storage down.
+
+For example, you might run this every 10 minutes to delete files that were marked inactive at least 2 hours ago.
+
 ## Custom Merge Query (ADVANCED USAGE)
 
 You can optionally provide a custom merge query to achieve functionality such as aggregate-on-merge or replace-on-merge as found in the variety of ClickHouse engine tables such as the AggregatingMergeTree and ReplacingMergeTree.

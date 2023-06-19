@@ -129,3 +129,7 @@ group by filename
 
 # you'll see the file count is smaller now
 print('got files', len(get_files(2020,1,1, 2024,8,1)))
+
+# remove inactive parts
+removed = ice.remove_inactive_parts(1000, partition_prefix='y=2023')
+print('removed', len(removed), 'files')

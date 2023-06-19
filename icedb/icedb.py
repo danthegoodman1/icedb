@@ -11,6 +11,7 @@ import boto3
 import botocore
 import psycopg2.extensions
 import sys
+import datetime
 
 PartitionFunctionType = Callable[[dict], str]
 FormatRowType = Callable[[dict], dict]
@@ -355,5 +356,46 @@ class IceDB:
                 ''', (gte_part, lte_part))
                 rows = mycur.fetchall()
                 return list(map(lambda x: 's3://{}/{}/{}'.format(self.s3bucket, x[0], x[1]), rows))
+        finally:
+            conn.close()
+
+    def remove_inactive_parts(self, min_age_ms: int, partition_prefix: str = None, limit = 10) -> str:
+        '''
+        Removes parquet files that are no longer active, and are older than some age. Returns the number of files deleted.
+
+        For performance, icedb will optimistically delete files from S3, meaning that if a crash occurs during the middle of a removal then files may be left in S3 even though they are seen as deleted in the DB.
+
+        The best mitigation for this is multiple small removal operations.
+        '''
+        conn = self.getconn()
+        try:
+            with conn.cursor() as mycur:
+                # find files to remove
+                mycur.execute(f'''
+                delete
+                from known_files
+                where (active, partition, filename) IN (
+                    select active, partition, filename
+                    from known_files
+                    where active = false
+                    and _updated <= '{(datetime.datetime.now() + datetime.timedelta(milliseconds=min_age_ms)).isoformat()}'
+                    {'' if partition_prefix is None else f"and partition like '{partition_prefix}%'"}
+                    limit {limit}
+                )
+                returning partition, filename, filesize
+                ''')
+                rows = mycur.fetchall()
+
+                # remove from s3 (continue if not found)
+                for deleted in rows:
+                    self.s3.delete_object(
+                        Bucket=self.s3bucket,
+                        Key=deleted[0] + '/' + deleted[1]
+                    )
+
+                mycur.execute('commit')
+                return list(map(lambda x: 's3://{}/{}/{}'.format(self.s3bucket, x[0], x[1]), rows))
+        except Exception as e:
+            raise e
         finally:
             conn.close()
