@@ -131,7 +131,7 @@ Content-Type: application/json
 Authorization: Bearer test
 
 {
-  "query": "select count(filename) from icedb(tabl:='segment', start_year:=1, end_year:=8000)",
+  "query": "select * from icedb(tabl:='segment', start_year:=1, end_year:=8000)",
   "format": "pretty"
 }
 

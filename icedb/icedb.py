@@ -204,7 +204,7 @@ class IceDB:
                 '''.format(
                     curid,
                     maxFileSize,
-                    '' if partition_prefix is None else "and partition > '{}'".format(partition_prefix),
+                    '' if partition_prefix is None else "and partition LIKE '{}%'".format(partition_prefix),
                     'asc' if asc else 'desc')
                 )
                 keepGoing = True
@@ -333,6 +333,7 @@ class IceDB:
                     '''.format(new_f_name, new_f_size, partition))
 
                     mergecur.execute('commit')
+                    print('merged files', actual_files)
                     return len(actual_files)
             except:
                 conn.rollback()

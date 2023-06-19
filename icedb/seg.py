@@ -31,7 +31,7 @@ def format_segment(row: dict) -> dict:
     final_row = {
         "ts": int(datetime.fromisoformat(row['receivedAt']).timestamp()*1000 if 'receivedAt' in row else datetime.utcnow().timestamp()*1000), # convert to ms
         "event": "", # replaced below
-        "user_id": row['userId'] if 'userId' in row else row['anonymousId'],
+        "user_id": row['userId'] if 'userId' in row and row['userId'] != None else row['anonymousId'],
         "anonymous": False if 'userId' in row else True,
         "properties": json.dumps(row["properties"]) if "properties" in row else {},
         "og_payload": json.dumps(row)
