@@ -378,7 +378,7 @@ class IceDB:
                     select active, partition, filename
                     from known_files
                     where active = false
-                    and _updated <= '{(datetime.datetime.now() + datetime.timedelta(milliseconds=min_age_ms)).isoformat()}'
+                    and _updated <= '{(datetime.datetime.now() - datetime.timedelta(milliseconds=min_age_ms)).isoformat()}'
                     {'' if partition_prefix is None else f"and partition like '{partition_prefix}%'"}
                     limit {limit}
                 )
