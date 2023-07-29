@@ -1,6 +1,6 @@
 from setuptools import setup, find_packages
 
-VERSION = '0.0.83'
+VERSION = '0.0.84'
 DESCRIPTION = 'IceDB'
 LONG_DESCRIPTION = 'IceDB in-process serverless OLAP powered by DuckDB'
 
@@ -17,7 +17,7 @@ setup(
     install_requires=[
         "boto3==1.26.151",
         "botocore==1.29.151",
-        "duckdb==0.8.0",
+        "duckdb==0.8.1",
         "pandas==2.0.2",
         "psycopg2==2.9.6"
     ],
