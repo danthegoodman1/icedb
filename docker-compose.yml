@@ -36,7 +36,7 @@ services:
       exit 0;
       "
   clickhouse:
-    image: clickhouse/clickhouse-server
+    image: clickhouse/clickhouse-server:latest
     depends_on:
       - minio
       - crdb
