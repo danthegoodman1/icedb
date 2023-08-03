@@ -76,7 +76,7 @@ Merged log files are not deleted immediately to prevent issues with currently ru
 
 Data part files that were part of the data merge are marked as alive so in the event that a list operation sees files A, B, and C, it knows that the old files were merged. If it only ends up seeing A and B, then it just gets a stale view of the data. This is why it's important to ensure that a single query gets a constant-time view of the database, so nested queries do not cause an inconsistent view of the data.
 
-Merged log file markers also store the timestamp when they were first merged, this is so that those markers can be safely dropped during merge when the timestamp is older than 2x the interval at which the log files would be deleted by the background cleanup process.
+Tomestones include the timestamp when they were first merged for the tombstone cleanup worker. When files merge, the must always carry forward any found tombstone. Tombstone cleanup is idempotent so in the event that a merge occurs concurrently with tombstone cleanup there is no risk of data loss or duplication.
 
 ## Tombstone cleanup
 
@@ -84,4 +84,4 @@ The second level of coordination with a second exclusive lock that is needed is 
 
 When tombstone cleanup occurs, the entire state of the log is read. Any tombstones that are found older than the `gc_grace_seconds` are deleted from S3.
 
-WIP: How do we handle removing the tombstones from the log file without rewriting it and creating more tombstones???
+When the cleaning process finds a log file with tombstones, it first deletes those files from S3. If that is successful (not found errors being idempotent passes), then the log files is replaced with the same contents, minus the tombstones.
