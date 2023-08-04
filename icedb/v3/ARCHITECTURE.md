@@ -17,7 +17,7 @@ interface {
   v: string // the version number
   sch: number // line number that the accumulated schema begins at
   tmb?: number // line number that the list of log file tombstone start at
-  f: number // line number that the list of files begins at
+  f: number // line number that the list of file markers begins at
 }
 ```
 
@@ -30,6 +30,10 @@ interface {
   [column: string]: string // example: "user_id": "VARCHAR"
 }
 ```
+
+Columns are never removed from the schema, and they always consist of the union of log file schemas.
+
+If data type conflicts are found (e.g. log file A has a column as a VARCHAR, but log file B has a column as a BIGINT), then the merge fails and error logs are thrown. This can be mitigated by having the ingestion instances read the schema periodically and caching in memory (only need to read log files up through the last schema line, then can abort request). One could also choose to use a transactionally-secure schema catalog to protect this, have data sources declare their schema ahead of time, and more to validate the schema.
 
 #### Log file tombstones (tmb)
 
