@@ -5,7 +5,6 @@ from typing import List
 from uuid import uuid4
 import pandas as pd
 import duckdb.typing as ty
-import psycopg2
 import boto3
 import botocore
 import sys
@@ -14,7 +13,7 @@ import datetime
 PartitionFunctionType = Callable[[dict], str]
 FormatRowType = Callable[[dict], dict]
 
-class IceDB:
+class IceDBv3:
 
     partitionStrategy: PartitionFunctionType
     sortOrder: List[str]
@@ -42,7 +41,6 @@ class IceDB:
         s3secretkey: str,
         s3endpoint: str,
         set_isolation=False,
-        create_table=True,
         duckdb_ext_dir: str=None,
         unique_row_key: str=None,
         row_group_size: int=122_880

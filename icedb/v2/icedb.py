@@ -16,7 +16,7 @@ import datetime
 PartitionFunctionType = Callable[[dict], str]
 FormatRowType = Callable[[dict], dict]
 
-class IceDB:
+class IceDBv2:
 
     partitionStrategy: PartitionFunctionType
     sortOrder: List[str]
