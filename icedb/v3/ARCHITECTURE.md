@@ -61,6 +61,17 @@ interface {
 }
 ```
 
+### Reading the log files
+
+To get a snapshot-consistent view of the database, a reader must perform the following actions:
+
+1. Choose consistent timestamp in milliseconds as your view of the log *(this should not be older than the tmb_grace_sec to prevent missing data)*
+2. List all files in the `_log` prefix for the table
+3. Read each found log file sequentially (they are sorted by time), removing known data parts as they are found in sunsequent files with tombstone references and accumulating the current schema (and handling schema conflicts if found)
+4. Return the final list of active files and accumulated schema
+
+The timestamp is important as listed files created after the timestamp can be ignored.
+
 ## Merging
 
 Merging requires coordination with an exclusive lock on a table.
