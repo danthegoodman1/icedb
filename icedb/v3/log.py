@@ -1,7 +1,6 @@
 import json
 import boto3
 import botocore
-from ksuid import ksuid
 from typing import Dict
 from time import time
 
@@ -159,6 +158,11 @@ def LogMetadataFromJSON(jsonl: dict):
 
 
 class IceLogIO:
+    fileSafeHostname: str
+
+    def __init__(self, fileSafeHostname: str):
+        self.fileSafeHostname = fileSafeHostname
+
     def readAtMaxTime(self, s3client: S3Client, timestamp: int) -> tuple[Schema, list[FileMarker], list[LogTombstone] | None]:
         '''
         Read the current state of the log up to a given timestamp
@@ -222,7 +226,7 @@ class IceLogIO:
         for fileMarker in files:
             logFileLines.append(fileMarker.toJSON())
 
-        fileID = ksuid().__str__()
+        fileID = f"{meta.timestamp}_{self.fileSafeHostname}"
 
         # Upload the file to S3
         fileKey = f"{s3client.s3prefix}/{fileID}.jsonl"
