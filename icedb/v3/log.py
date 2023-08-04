@@ -2,6 +2,8 @@ import json
 import boto3
 import botocore
 from ksuid import ksuid
+from typing import Dict
+from time import time
 
 
 class SchemaConflictException(Exception):
@@ -48,13 +50,17 @@ class Schema:
     """
     d = {}
 
-    def __init__(self, columns: list[str], types: list[str]):
+    def __init__(self):
+        self.d = {}
+
+    def accumulate(self, columns: list[str], types: list[str]):
         for i in range(len(columns)):
             col = columns[i]
             colType = types[i]
             if col in self.d and colType != self.d[col]:
                 raise SchemaConflictException(col, [self.d[col], colType])
             self.d[col] = colType
+        return self
 
     def columns(self) -> list[str]:
         cols = []
@@ -81,19 +87,19 @@ class Schema:
 class FileMarker:
     path: str
     createdMS: int
-    bytes: int
+    fileBytes: int
     tombstone: str | None
 
-    def __init__(self, path: str, createdMS: int, bytes: int, tombstone: str | None = None):
+    def __init__(self, path: str, createdMS: int, fileBytes: int, tombstone: str | None = None):
         self.path = path
         self.createdMS = createdMS
-        self.bytes = bytes
+        self.fileBytes = fileBytes
         self.tombstone = tombstone
 
     def toJSON(self) -> str:
         d = {
             "p": self.path,
-            "b": self.bytes,
+            "b": self.fileBytes,
             "t": self.createdMS,
         }
 
@@ -103,7 +109,7 @@ class FileMarker:
         return json.dumps(d)
 
 
-class FileTombstone:
+class LogTombstone:
     path: str
     createdMS: int
 
@@ -123,18 +129,21 @@ class LogMetadata:
     schemaLineIndex: int
     fileLineIndex: int
     tombstoneLineIndex: int | None
+    timestamp: int
 
     def __init__(self, version: int, schemaLineIndex: int, fileLineIndex: int, tombstoneLineIndex: int | None):
         self.version = version
         self.schemaLineIndex = schemaLineIndex
         self.fileLineIndex = fileLineIndex
         self.tombstoneLineIndex = tombstoneLineIndex
+        self.timestamp = round(time()*1000)
 
     def toJSON(self) -> str:
         d = {
             "v": self.version,
             "sch": self.schemaLineIndex,
-            "f": self.fileLineIndex
+            "f": self.fileLineIndex,
+            "t": self.timestamp
         }
 
         if self.tombstoneLineIndex is not None:
@@ -142,12 +151,16 @@ class LogMetadata:
 
         return json.dumps(d)
     
-    def fromJSON(jsonl: str):
-        return LogMetadata(jsonl["v"], jsonl["sch"], jsonl["f"], jsonl["tmb"] if "tmb" in jsonl else None)
+
+def LogMetadataFromJSON(jsonl: dict):
+    lm = LogMetadata(jsonl["v"], jsonl["sch"], jsonl["f"], jsonl["tmb"] if "tmb" in jsonl else None)
+    lm.timestamp = jsonl["t"]
+    print(lm.toJSON())
+    return lm
 
 
 class IceLogIO:
-    def readAtMaxTime(self, s3client: S3Client, timestamp: int) -> tuple[Schema, list[FileMarker], list[FileTombstone] | None]:
+    def readAtMaxTime(self, s3client: S3Client, timestamp: int) -> tuple[Schema, list[FileMarker], list[LogTombstone] | None]:
         '''
         Read the current state of the log up to a given timestamp
         '''
@@ -157,22 +170,50 @@ class IceLogIO:
             Prefix=s3client.s3prefix
         )
 
-        aliveFiles = {}
-        schema = {}
-        tombstones = {}
+        totalSchema = Schema()
+        aliveFiles: Dict[str, FileMarker] = {}
+        tombstones: Dict[str, LogTombstone] = {}
 
         for file in logFiles['Contents']:
+            print('reading in file', file['Key'])
             obj = s3client.s3.get_object(
                 Bucket=s3client.s3bucket,
                 Key=file['Key']
             )
-            jsonl: str = str(obj['Body'].read(), encoding="utf-8")
-            jsonl = jsonl.split("\n")
+            jsonl = str(obj['Body'].read(), encoding="utf-8").split("\n")
             metaJSON = json.loads(jsonl[0])
-            meta = LogMetadata.fromJSON(metaJSON)
-        pass
+            meta = LogMetadataFromJSON(metaJSON)
 
-    def append(self, s3client: S3Client, version: int, schema: Schema, files: list[FileMarker], tombstones: list[FileTombstone] | None = None) -> str:
+            # Schema
+            schema = dict(json.loads(jsonl[meta.schemaLineIndex]))
+            totalSchema.accumulate(list(schema.keys()), list(schema.values()))
+
+            # tombstones
+            if meta.tombstoneLineIndex != None:
+                for i in range(meta.tombstoneLineIndex, meta.fileLineIndex):
+                    tmbDict = dict(json.loads(jsonl[i]))
+                    if tmbDict["p"] not in tombstones:
+                        tombstones[tmbDict["p"]] = LogTombstone(tmbDict["p"], tmbDict["t"])
+
+            # Files
+            for i in range(meta.fileLineIndex, len(jsonl)):
+                fmJSON = dict(json.loads(jsonl[i]))
+                if fmJSON["p"] in aliveFiles and "tmb" in fmJSON:
+                    # Not alive, remove
+                    print("removing found tombstone for", fmJSON["p"])
+                    del aliveFiles[fmJSON["p"]]
+                    continue
+
+                # Otherwise we try to add it
+                fm = FileMarker(fmJSON["p"], fmJSON["t"], fmJSON["b"], fmJSON["tmb"] if "tmb" in fmJSON else None)
+                if fmJSON["p"] not in aliveFiles:
+                    print('adding file', fmJSON["p"])
+                    aliveFiles[fmJSON["p"]] = fm
+
+            # meta.
+        return totalSchema, list(aliveFiles.values()), list(tombstones.values())
+
+    def append(self, s3client: S3Client, version: int, schema: Schema, files: list[FileMarker], tombstones: list[LogTombstone] | None = None) -> str:
         """
         Creates a new log file in S3, in the order of version, schema, tombstones?, files
         """

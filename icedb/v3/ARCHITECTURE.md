@@ -13,6 +13,7 @@ The log file is new-line delimited JSON, with the line being special. The first 
 ```ts
 interface {
   v: string // the version number
+  t: number // unix ms timestamp of file creation. For merges, this is the timestamp after listing ends and merging logic begins, for append operations, it's the moment metadata is created, tombstone cleanup leaves the current value when replacing a file
   sch: number // line number that the accumulated schema begins at
   tmb?: number // line number that the list of log file tombstones start at
   f: number // line number that the list of file markers begins at
