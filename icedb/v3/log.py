@@ -15,6 +15,33 @@ class SchemaConflictException(Exception):
         self.message = f"tried to convert schema to JSON with column '{self.column}' conflicting types: {', '.join(foundTypes)}"
 
 
+class S3Client():
+    s3: any
+    s3prefix: str
+    s3bucket: str
+    session: any
+
+    def __init__(
+        self,
+        s3prefix: str,
+        s3bucket: str,
+        s3region: str,
+        s3endpoint: str,
+        s3accesskey: str,
+        s3secretkey: str
+    ):
+        self.s3prefix = s3prefix
+        self.session = boto3.session.Session()
+        self.s3 = self.session.client('s3',
+            config=botocore.config.Config(s3={'addressing_style': 'path'}),
+            region_name=s3region,
+            endpoint_url=s3endpoint,
+            aws_access_key_id=s3accesskey,
+            aws_secret_access_key=s3secretkey
+        )
+        self.s3bucket = s3bucket
+
+
 class Schema:
     """
     Accumulated schema. It is safe to pass in columns and types redundantly in the constructor. Can raise a `SchemaConflictException` if conflicting types are passed in.
@@ -55,9 +82,9 @@ class FileMarker:
     path: str
     createdMS: int
     bytes: int
-    tombstone: int | None
+    tombstone: str | None
 
-    def __init__(self, path: str, createdMS: int, bytes: int, tombstone: str | None):
+    def __init__(self, path: str, createdMS: int, bytes: int, tombstone: str | None = None):
         self.path = path
         self.createdMS = createdMS
         self.bytes = bytes
@@ -114,39 +141,38 @@ class LogMetadata:
             d["tmb"] = self.tombstoneLineIndex
 
         return json.dumps(d)
+    
+    def fromJSON(jsonl: str):
+        return LogMetadata(jsonl["v"], jsonl["sch"], jsonl["f"], jsonl["tmb"] if "tmb" in jsonl else None)
 
 
-class IceLog:
-
-    path: str
-    session: any
-    s3: any
-    s3bucket: str
-
-    def __init__(
-        self,
-        path: str,
-        s3bucket: str,
-        s3region: str,
-        s3endpoint: str,
-        s3accesskey: str,
-        s3secretkey: str
-    ):
-        self.path = path
-        self.session = boto3.session.Session()
-        self.s3 = self.session.client('s3',
-            config=botocore.config.Config(s3={'addressing_style': 'path'}),
-            region_name=s3region,
-            endpoint_url=s3endpoint,
-            aws_access_key_id=s3accesskey,
-            aws_secret_access_key=s3secretkey
+class IceLogIO:
+    def readAtMaxTime(self, s3client: S3Client, timestamp: int) -> tuple[Schema, list[FileMarker], list[FileTombstone] | None]:
+        '''
+        Read the current state of the log up to a given timestamp
+        '''
+        logFiles = s3client.s3.list_objects_v2(
+            Bucket=s3client.s3bucket,
+            MaxKeys=1000,
+            Prefix=s3client.s3prefix
         )
-        self.s3bucket = s3bucket
 
-    def readAtMaxTime(self, timestamp: int):
+        aliveFiles = {}
+        schema = {}
+        tombstones = {}
+
+        for file in logFiles['Contents']:
+            obj = s3client.s3.get_object(
+                Bucket=s3client.s3bucket,
+                Key=file['Key']
+            )
+            jsonl: str = str(obj['Body'].read(), encoding="utf-8")
+            jsonl = jsonl.split("\n")
+            metaJSON = json.loads(jsonl[0])
+            meta = LogMetadata.fromJSON(metaJSON)
         pass
 
-    def append(self, version: int, schema: Schema, files: list[FileMarker], tombstones: list[FileTombstone] | None):
+    def append(self, s3client: S3Client, version: int, schema: Schema, files: list[FileMarker], tombstones: list[FileTombstone] | None = None) -> str:
         """
         Creates a new log file in S3, in the order of version, schema, tombstones?, files
         """
@@ -158,13 +184,15 @@ class IceLog:
             for tmb in tombstones:
                 logFileLines.append(tmb.toJSON())
         for fileMarker in files:
-            logFileLines.append(fileMarker)
+            logFileLines.append(fileMarker.toJSON())
 
         fileID = ksuid().__str__()
 
         # Upload the file to S3
-        self.s3.put_object(
-            Body=bytes('\n'.join(logFileLines)),
-            Bucket=self.s3bucket,
-            Key=f"{self.path}/${fileID}.jsonl"
+        fileKey = f"{s3client.s3prefix}/{fileID}.jsonl"
+        s3client.s3.put_object(
+            Body=bytes('\n'.join(logFileLines), 'utf-8'),
+            Bucket=s3client.s3bucket,
+            Key=fileKey
         )
+        return fileKey
