@@ -46,7 +46,7 @@ interface {
 }
 ```
 
-#### File (f)
+#### File marker (f)
 
 There are at least one file lines per log file, taking the form:
 
@@ -55,7 +55,7 @@ interface {
   "p": string // the file path, e.g. /some/prefixed/file.parquet
   "b": number // the size in bytes
   "t": number // created timestamp in milliseconds
-  "a": bool // whether the file is active
+  "tmb": string // the path of the log file this was merged from, indicating that this file is not alive. When tombstone cleanup deletes this log file, it will also delete this file marker
 }
 ```
 
@@ -66,7 +66,7 @@ Merging required coordination with an exclusive lock.
 When a merge occurs, both data parts and log files are merged. A newly created log file is the combination of:
 
 1. New files created in the merge (should be 1) (`f`)
-2. Files that were part of the merged, marked as not alive (`f`)
+2. Files that were part of the merged, marked as not alive (with their tombstone tracked) (`f`)
 3. Files that were not part of the merge, marked alive (`f`)
 4. Log files that contained alive data files that were part of the merge (`src`)
 
@@ -76,7 +76,7 @@ Merged log files are not deleted immediately to prevent issues with currently ru
 
 Data part files that were part of the data merge are marked as alive so in the event that a list operation sees files A, B, and C, it knows that the old files were merged. If it only ends up seeing A and B, then it just gets a stale view of the data. This is why it's important to ensure that a single query gets a constant-time view of the database, so nested queries do not cause an inconsistent view of the data.
 
-Tomestones include the timestamp when they were first merged for the tombstone cleanup worker. When files merge, the must always carry forward any found tombstone. Tombstone cleanup is idempotent so in the event that a merge occurs concurrently with tombstone cleanup there is no risk of data loss or duplication.
+Tomestones include the timestamp when they were first merged for the tombstone cleanup worker. When files merge, the must always carry forward any found tombstone. Tombstone cleanup is idempotent so in the event that a merge occurs concurrently with tombstone cleanup there is no risk of data loss or duplication. Merging must also always carry forward file markers that have tombstones, as these are also removed by the tomestone cleanup process.
 
 ## Tombstone cleanup
 
@@ -85,3 +85,7 @@ The second level of coordination with a second exclusive lock that is needed is 
 When tombstone cleanup occurs, the entire state of the log is read. Any tombstones that are found older than the `gc_grace_seconds` are deleted from S3.
 
 When the cleaning process finds a log file with tombstones, it first deletes those files from S3. If that is successful (not found errors being idempotent passes), then the log files is replaced with the same contents, minus the tombstones.
+
+Tombstone cleanup is also responsible for clearing out file markers with a linked tombstone.
+
+TLDR: The tombstone process deletes files in S3 that have tombstones, and rewrites the log files without the tombstones and the file markers that are linked to those tombstones.
