@@ -67,7 +67,7 @@ To get a snapshot-consistent view of the database, a reader must perform the fol
 
 1. Choose a timestamp in milliseconds as your view of the log *(this should not be older than the `tmb_grace_sec` to prevent missing data)*
 2. List all files in the `_log` prefix for the table
-3. Read each found log file sequentially (they are sorted by time), removing known data parts as file markers are found with tombstone references, and accumulating the current schema (and handling schema conflicts if found)
+3. Read each found log file sequentially (they are sorted by time), removing known data parts as file markers are found with tombstone references, and accumulating the current schema (handling schema conflicts if found)
 4. Return the final list of active files and accumulated schema
 
 The timestamp is important as listed files created after the timestamp must be ignored, and any pagination could cause inconsistent view of the data.
