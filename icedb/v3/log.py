@@ -155,7 +155,6 @@ class LogMetadata:
 def LogMetadataFromJSON(jsonl: dict):
     lm = LogMetadata(jsonl["v"], jsonl["sch"], jsonl["f"], jsonl["tmb"] if "tmb" in jsonl else None)
     lm.timestamp = jsonl["t"]
-    print(lm.toJSON())
     return lm
 
 
@@ -175,7 +174,6 @@ class IceLogIO:
         tombstones: Dict[str, LogTombstone] = {}
 
         for file in logFiles['Contents']:
-            print('reading in file', file['Key'])
             obj = s3client.s3.get_object(
                 Bucket=s3client.s3bucket,
                 Key=file['Key']
@@ -188,7 +186,7 @@ class IceLogIO:
             schema = dict(json.loads(jsonl[meta.schemaLineIndex]))
             totalSchema.accumulate(list(schema.keys()), list(schema.values()))
 
-            # tombstones
+            # Log tombstones
             if meta.tombstoneLineIndex != None:
                 for i in range(meta.tombstoneLineIndex, meta.fileLineIndex):
                     tmbDict = dict(json.loads(jsonl[i]))
@@ -200,14 +198,12 @@ class IceLogIO:
                 fmJSON = dict(json.loads(jsonl[i]))
                 if fmJSON["p"] in aliveFiles and "tmb" in fmJSON:
                     # Not alive, remove
-                    print("removing found tombstone for", fmJSON["p"])
                     del aliveFiles[fmJSON["p"]]
                     continue
 
-                # Otherwise we try to add it
+                # Otherwise add if not exists
                 fm = FileMarker(fmJSON["p"], fmJSON["t"], fmJSON["b"], fmJSON["tmb"] if "tmb" in fmJSON else None)
                 if fmJSON["p"] not in aliveFiles:
-                    print('adding file', fmJSON["p"])
                     aliveFiles[fmJSON["p"]] = fm
 
             # meta.
