@@ -206,7 +206,6 @@ class IceLogIO:
                 if fmJSON["p"] not in aliveFiles:
                     aliveFiles[fmJSON["p"]] = fm
 
-            # meta.
         return totalSchema, list(aliveFiles.values()), list(tombstones.values())
 
     def append(self, s3client: S3Client, version: int, schema: Schema, files: list[FileMarker], tombstones: list[LogTombstone] | None = None) -> str:
