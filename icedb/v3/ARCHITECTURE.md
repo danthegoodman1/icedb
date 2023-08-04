@@ -6,8 +6,6 @@ IceDB keeps track of the active files and schema in a log, much like other datab
 
 Both the schema and active files are tracked within the same log file, and in each log file.
 
-The contents of the log are sorted by time (time the part became active). It represents a sequence of operations such as ADD/DEL to determine when files become active and inactive.
-
 ### Log file structure
 
 The log file is new-line delimited JSON, with the line being special. The first line is in the schema (typescript format):
