@@ -2,7 +2,7 @@
 
 ## Log file(s)
 
-IceDB keeps track of the active files and schema in a log, much like other database systems. This log is stored in S3, and is append-only. This log can also be truncated via a tombstone cleanup process describe below.
+IceDB keeps track of the active files and schema in a log, much like other database systems. This log is stored in S3, and is append-only. This log can also be truncated via a tombstone cleanup process described below.
 
 Both the schema and active files are tracked within the same log file, and in each log file.
 
