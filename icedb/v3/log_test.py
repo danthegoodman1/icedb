@@ -11,21 +11,22 @@ print("created log file", logFile)
 
 # pretend inevershow* merged into something
 logFile = log.append(s3c, 1, Schema().accumulate(["a", "b", "c"], ["VARCHAR", "BIGINT", "BIGINT"]), [
-    FileMarker("tenant/_data/d=2023-08-04/a.parquet", time()-10 * 1000, 123),
-    FileMarker("tenant/_data/d=2023-08-04/b.parquet", time()-11 * 1000, 234),
-    FileMarker("tenant/_data/d=2023-08-05/c.parquet", time()-5 * 1000, 123),
-    FileMarker("tenant/_data/d=2023-08-05/e.parquet", time()-4 * 1000, 234),
-    FileMarker("tenant/_data/d=2023-08-04/inevershow.parquet", time()-12 * 1000, 345, logFile),
-    FileMarker("tenant/_data/d=2023-08-04/inevershoweither.parquet", time()-12 * 1000, 345, logFile)
-], [LogTombstone(logFile, time()-3 * 1000)])
+    FileMarker("tenant/_data/d=2023-08-04/a.parquet", round(time()-10 * 1000), 123),
+    FileMarker("tenant/_data/d=2023-08-04/b.parquet", round(time()-11 * 1000), 234),
+    FileMarker("tenant/_data/d=2023-08-05/c.parquet", round(time()-5 * 1000), 123),
+    FileMarker("tenant/_data/d=2023-08-05/e.parquet", round(time()-4 * 1000), 234),
+    FileMarker("tenant/_data/d=2023-08-04/inevershow.parquet", round(time()-12 * 1000), 345, 1),
+    FileMarker("tenant/_data/d=2023-08-04/inevershoweither.parquet", round(time()-12 * 1000), 345, 1)
+], [LogTombstone(logFile, round(time()-3 * 1000))])
 
 print("created log file", logFile)
 
 # read in a log file
-s1, f1, t1 = log.read_at_max_time(s3c, time() * 1000)
+s1, f1, t1, l1 = log.read_at_max_time(s3c, round(time() * 1000))
 print(s1.toJSON())
-print(list(map(lambda x: x.path, f1)))
-print(list(map(lambda x: x.path, t1)))
+print(f1)
+print(t1)
+print(l1)
 # s2, f2, t2 = log.readAtMaxTime(s3c, time()-9*1000)
 
 logFiles = s3c.s3.list_objects_v2(

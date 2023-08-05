@@ -58,7 +58,7 @@ interface {
   "p": string // the file path, e.g. /some/prefixed/file.parquet
   "b": number // the size in bytes
   "t": number // created timestamp in milliseconds
-  "tmb"?: string // the path of the log file this was merged from, indicating that this file is not alive. When tombstone cleanup updates this log file it will also delete this file marker
+  "tmb"?: int // exists if the file is not alive, the unix ms the file was tombstoned
 }
 ```
 

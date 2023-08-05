@@ -93,9 +93,9 @@ class FileMarker:
     path: str
     createdMS: int
     fileBytes: int
-    tombstone: str | None
+    tombstone: int | None
 
-    def __init__(self, path: str, createdMS: int, fileBytes: int, tombstone: str | None = None):
+    def __init__(self, path: str, createdMS: int, fileBytes: int, tombstone: int | None = None):
         self.path = path
         self.createdMS = createdMS
         self.fileBytes = fileBytes
@@ -200,8 +200,10 @@ class IceLogIO:
         totalSchema = Schema()
         aliveFiles: Dict[str, FileMarker] = {}
         tombstones: Dict[str, LogTombstone] = {}
+        log_files: list[str] = []
 
         for file in logFiles['Contents']:
+            log_files.append(file['Key'])
             obj = s3client.s3.get_object(
                 Bucket=s3client.s3bucket,
                 Key=file['Key']
@@ -217,36 +219,35 @@ class IceLogIO:
             totalSchema.accumulate(list(schema.keys()), list(schema.values()))
 
             # Log tombstones
-            if meta.tombstoneLineIndex != None:
+            if meta.tombstoneLineIndex is not None:
                 for i in range(meta.tombstoneLineIndex, meta.fileLineIndex):
                     tmbDict = dict(json.loads(jsonl[i]))
-                    if tmbDict["p"] not in tombstones:
-                        tombstones[tmbDict["p"]] = LogTombstone(tmbDict["p"], tmbDict["t"])
+                    tombstones[tmbDict["p"]] = LogTombstone(tmbDict["p"], int(tmbDict["t"]))
 
             # Files
             for i in range(meta.fileLineIndex, len(jsonl)):
                 fmJSON = dict(json.loads(jsonl[i]))
-                if fmJSON["p"] in aliveFiles and "tmb" in fmJSON:
-                    # Not alive, remove
-                    del aliveFiles[fmJSON["p"]]
-                    continue
+                # if fmJSON["p"] in aliveFiles and "tmb" in fmJSON:
+                #     # Not alive, remove
+                #     del aliveFiles[fmJSON["p"]]
+                #     continue
 
                 # Otherwise add if not exists
-                fm = FileMarker(fmJSON["p"], fmJSON["t"], fmJSON["b"], fmJSON["tmb"] if "tmb" in fmJSON else None)
-                if fmJSON["p"] not in aliveFiles:
-                    aliveFiles[fmJSON["p"]] = fm
+                fm = FileMarker(fmJSON["p"], int(fmJSON["t"]), int(fmJSON["b"]), fmJSON["tmb"] if "tmb" in fmJSON else None)
+                # if fmJSON["p"] not in aliveFiles:
+                aliveFiles[fmJSON["p"]] = fm
 
-        return totalSchema, list(aliveFiles.values()), list(tombstones.values()), list(map(lambda x: x['Key'], logFiles['Contents']))
+        return totalSchema, list(aliveFiles.values()), list(tombstones.values()), log_files
 
-    def append(self, s3client: S3Client, version: int, schema: Schema, files: list[FileMarker], tombstones: list[LogTombstone] | None = None) -> str:
+    def append(self, s3client: S3Client, version: int, schema: Schema, files: list[FileMarker], tombstones: list[LogTombstone] = None) -> str:
         """
         Creates a new log file in S3, in the order of version, schema, tombstones?, files
         """
         logFileLines: list[str] = []
-        meta = LogMetadata(version, 1, 2 if tombstones == None else 2+len(tombstones), None if tombstones == None else 2)
+        meta = LogMetadata(version, 1, 2 if tombstones is None or len(tombstones) == 0 else 2+len(tombstones), None if tombstones is None or len(tombstones) == 0 else 2)
         logFileLines.append(meta.toJSON())
         logFileLines.append(schema.toJSON())
-        if tombstones != None:
+        if tombstones is not None:
             for tmb in tombstones:
                 logFileLines.append(tmb.toJSON())
         for fileMarker in files:

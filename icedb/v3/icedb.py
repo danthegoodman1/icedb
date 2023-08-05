@@ -2,7 +2,7 @@ from typing import List, Callable, Dict
 import duckdb
 from uuid import uuid4
 import pandas as pd
-from log import IceLogIO, Schema, LogMetadata, S3Client, FileMarker
+from log import IceLogIO, Schema, LogMetadata, S3Client, FileMarker, LogTombstone
 from time import time
 
 PartitionFunctionType = Callable[[dict], str]
@@ -116,14 +116,14 @@ class IceDBv3:
             file_markers.append(FileMarker(fullpath, round(time() * 1000), obj['ContentLength']))
 
         # Append to log
-        meta = LogMetadata(1, 1, 2)
         logio = IceLogIO(self.file_safe_hostname)
         logio.append(self.s3c, 1, running_schema, file_markers)
 
         return file_markers
 
     def merge(self, max_file_size=10_000_000, max_file_count=10, asc=False,
-                    custom_merge_query: str = None) -> int:
+              custom_merge_query: str = None) -> tuple[
+        str | None, FileMarker | None, str | None, list[FileMarker] | None]:
         """
         desc merge should be fast, working on active partitions. asc merge should be slow and in background,
         slowly fully optimizes partitions over time.
@@ -139,31 +139,83 @@ class IceDBv3:
             file_path = file.path
             if self.s3c.s3prefix is not None:
                 file_path = file_path.removeprefix(self.s3c.s3prefix + "/_data/")
-            print("got file path after removing prefix:", file_path)
             path_parts = file_path.split("/")
-            print("got path parts", path_parts)
             # remove the file name
             partition = '/'.join(path_parts[:-1])
-            print('got partition', partition, "for file", file.path)
             if partition not in partitions:
                 partitions[partition] = []
             partitions[partition].append(file)
 
-        print("got final partitions map:", partitions)
-
         # sort the dict
         partitions = dict(sorted(partitions.items(), key=lambda item: len(item[1]), reverse=not asc))
-        for key, val in partitions.items():
-            if len(val) <= 1:
-                print('skipping partition', key, 'not enough items to merge')
+        for partition, file_markers in partitions.items():
+            if len(file_markers) <= 1:
                 continue
             # sort the items in the array by file size, asc
-            sorted_files = sorted(val, key=lambda item: item.fileBytes)
-            print('got sorted files', sorted_files)
+            sorted_file_markers = sorted(file_markers, key=lambda item: item.fileBytes)
+            # aggregate until we meet the max file count or limit
+            acc_bytes = 0
+            acc_file_markers: list[FileMarker] = []
+            for file_marker in sorted_file_markers:
+                acc_bytes += file_marker.fileBytes
+                acc_file_markers.append(file_marker)
+                if acc_bytes >= max_file_size and len(acc_file_markers) > 1 and len(acc_file_markers) >= max_file_count:
+                    # then we merge
+                    break
+            if len(acc_file_markers) > 1:
+                # merge data parts
+                filename = str(uuid4()) + '.parquet'
+                path_parts = ['_data', partition, filename]
+                if self.s3c.s3prefix is not None:
+                    path_parts = [self.s3c.s3prefix] + path_parts
+                fullpath = '/'.join(path_parts)
 
+                q = "COPY ({}) TO '{}' (FORMAT PARQUET, ROW_GROUP_SIZE {})".format(
+                    ("select * from source_files" if custom_merge_query is None else custom_merge_query).replace(
+                        "source_files", "read_parquet(?, hive_partitioning=1)"),
+                    's3://{}/{}'.format(self.s3c.s3bucket, fullpath),
+                    self.row_group_size
+                )
 
-        # create the new log file with tombstones
-        pass
+                self.ddb.execute(q, [
+                    list(map(lambda x: f"s3://{self.s3c.s3bucket}/{x.path}", acc_file_markers))
+                ])
+
+                # get the new file size
+                obj = self.s3c.s3.head_object(
+                    Bucket=self.s3c.s3bucket,
+                    Key=fullpath
+                )
+                merged_file_size = obj['ContentLength']
+
+                # create new log file with tombstones
+                acc_file_paths = list(map(lambda x: x.path, acc_file_markers))
+                now = round(time() * 1000)
+                new_file_marker = FileMarker(fullpath, now, merged_file_size)
+
+                updated_markers = list(map(lambda x: FileMarker(
+                    x.path,
+                    x.createdMS,
+                    x.fileBytes,
+                    now if x.path in acc_file_paths else x.tombstone),
+                                           file_markers))
+
+                new_tombstones = list(map(lambda x: LogTombstone(x, now), filter(lambda x: x not in cur_tombstones, all_log_files)))
+
+                new_log = logio.append(
+                    self.s3c,
+                    1,
+                    cur_schema,
+                    updated_markers + [
+                        new_file_marker
+                    ],
+                    cur_tombstones + new_tombstones
+                )
+
+                return new_log, new_file_marker, partition, acc_file_markers
+
+        # otherwise we did not merge
+        return None, None, None, None
 
     def get_files(self, gte_part: str, lte_part: str) -> List[str]:
         pass

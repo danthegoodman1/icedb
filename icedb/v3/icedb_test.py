@@ -4,20 +4,24 @@ from datetime import datetime
 import json
 from time import time
 
-s3c = S3Client(s3prefix="tenant", s3bucket="testbucket", s3region="us-east-1", s3endpoint="http://localhost:9000", s3accesskey="user", s3secretkey="password")
+s3c = S3Client(s3prefix="tenant", s3bucket="testbucket", s3region="us-east-1", s3endpoint="http://localhost:9000",
+               s3accesskey="user", s3secretkey="password")
+
 
 def partStrat(row: dict) -> str:
-    rowTime = datetime.utcfromtimestamp(row['ts']/1000)
+    rowTime = datetime.utcfromtimestamp(row['ts'] / 1000)
     part = f"cust=test/d={rowTime.strftime('%Y-%m-%d')}"
     return part
 
+
 def format_row(row: dict) -> dict:
-    row['properties'] = json.dumps(row['properties']) # convert nested dict to json string
+    row['properties'] = json.dumps(row['properties'])  # convert nested dict to json string
     return row
+
 
 ice = IceDBv3(
     partStrat,
-['event', 'ts'],
+    ['event', 'ts'],
     format_row,
     "us-east-1",
     "user",
@@ -28,40 +32,78 @@ ice = IceDBv3(
     True
 )
 
-example_events = [{
-    "ts": 1686176939445,
-    "event": "page_load",
-    "user_id": "a",
-    "properties": {
-        "hey": "ho",
-        "numtime": 1,
-        "nested_dict": {
-            "ee": "fff"
+example_events = [
+    {
+        "ts": 1686176939445,
+        "event": "page_load",
+        "user_id": "a",
+        "properties": {
+            "hey": "ho",
+            "numtime": 1,
+            "nested_dict": {
+                "ee": "fff"
+            }
+        }
+    }, {
+        "ts": 1676126229999,
+        "event": "page_load",
+        "user_id": "b",
+        "properties": {
+            "hey": "hoergergergrergereg",
+            "numtime": 1,
+            "nested_dict": {
+                "ee": "fff"
+            }
+        }
+    }, {
+        "ts": 1686176939666,
+        "event": "something_else",
+        "user_id": "a",
+        "properties": {
+            "hey": "ho",
+            "numtime": 1,
+            "nested_dict": {
+                "ee": "fff"
+            }
         }
     }
-}, {
-    "ts": 1676126229999,
-    "event": "page_load",
-    "user_id": "b",
-    "properties": {
-        "hey": "hoergergergrergereg",
-        "numtime": 1,
-        "nested_dict": {
-            "ee": "fff"
+]
+more_example_events = [
+    {
+        "ts": 1686176939445,
+        "event": "page_load",
+        "user_id": "a",
+        "properties": {
+            "hey": "hoeeeeeee",
+            "numtime": 1,
+            "nested_dict": {
+                "ee": "fff"
+            }
+        }
+    }, {
+        "ts": 1676126229999,
+        "event": "page_load",
+        "user_id": "b",
+        "properties": {
+            "hey": "hoergeeeeeeeeeeeeeeergergrergereg",
+            "numtime": 1,
+            "nested_dict": {
+                "ee": "fff"
+            }
+        }
+    }, {
+        "ts": 1686176939666,
+        "event": "something_else",
+        "user_id": "a",
+        "properties": {
+            "hey": "hoeeeeeeeeeeeeeeeee",
+            "numtime": 1,
+            "nested_dict": {
+                "ee": "fff"
+            }
         }
     }
-}, {
-    "ts": 1686176939666,
-    "event": "something_else",
-    "user_id": "a",
-    "properties": {
-        "hey": "ho",
-        "numtime": 1,
-        "nested_dict": {
-            "ee": "fff"
-        }
-    }
-}]
+]
 
 try:
     print("============= inserting ==================")
@@ -73,9 +115,9 @@ try:
     log = IceLogIO("dan-mbp")
     s1, f1, t1, l1 = log.read_at_max_time(s3c, round(time() * 1000))
     print("============= Current State =============")
-    print("schema:", s1.toJSON())
-    print("files:", list(map(lambda x: x.path, f1)))
-    print("tombstones:", list(map(lambda x: x.path, t1)))
+    print("schema:", s1)
+    print("files:", f1)
+    print("tombstones:", t1)
     print("log files:", l1)
 
     # Verify the results
@@ -95,7 +137,7 @@ try:
 
     # ================= do it again =====================
     print("============= inserting ==================")
-    inserted = ice.insert(example_events)
+    inserted = ice.insert(more_example_events)
     secondInserted = list(map(lambda x: x.path, inserted))
     print('inserted', secondInserted)
 
@@ -103,9 +145,9 @@ try:
     log = IceLogIO("dan-mbp")
     s1, f1, t1, l1 = log.read_at_max_time(s3c, round(time() * 1000))
     print("=== Current State ===")
-    print("schema:", s1.toJSON())
-    print("files:", list(map(lambda x: x.path, f1)))
-    print("tombstones:", list(map(lambda x: x.path, t1)))
+    print("schema:", s1)
+    print("files:", f1)
+    print("tombstones:", t1)
     print("log files:", l1)
 
     # Verify the results
@@ -126,25 +168,38 @@ try:
     # ================== Merge =========================
     print("============== merging results ==============")
 
+    previous_logs = sorted(l1)
+
     # merge fully
-    ice.merge()
+    l1, new_file, partition, merged_files = ice.merge()
+    if l1 is not None:
+        print("merged", l1, new_file, partition, merged_files)
 
     # Read the state in
     log = IceLogIO("dan-mbp")
     s1, f1, t1, l1 = log.read_at_max_time(s3c, round(time() * 1000))
     print("=== Current State ===")
-    print("schema:", s1.toJSON())
-    print("files:", list(map(lambda x: x.path, f1)))
-    print("tombstones:", list(map(lambda x: x.path, t1)))
+    print("schema:", s1)
+    print("files:", f1)
+    print("tombstones:", t1)
     print("log files:", l1)
 
-    # TODO: verify log tombstones and file marker tombstones
-    expectedFileTombstones = firstInserted + secondInserted
+    # verify log tombstones and file marker tombstones
+    expectedFileTombstones = list(filter(lambda x: 'd=2023-06-07' in x, firstInserted+secondInserted))
     print("expecting file tombstones:", expectedFileTombstones)
+    actual_tomb = list(map(lambda x: x.path, filter(lambda x: x.tombstone is not None, f1)))
+    print("got actual tombstones:", actual_tomb)
+    assert sorted(expectedFileTombstones) == sorted(actual_tomb)
+
+    print("expected log tombstones", previous_logs)
+    actual_log_tombstones = sorted(map(lambda x: x.path, t1))
+    print("actual log tombstones", actual_log_tombstones)
+    assert previous_logs == actual_log_tombstones
 
     # Verify the results
+    alive_files = list(filter(lambda x: x.tombstone is None, f1))
     query = "select count(user_id), user_id from read_parquet([{}]) group by user_id order by count(user_id) desc".format(
-        ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", f1)))
+        ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
     )
     print('executing query:', query)
     # THIS IS A BAD IDEA NEVER DO THIS IN PRODUCTION
@@ -158,7 +213,7 @@ try:
     print('results validated')
     print("test successful!")
 except Exception as e:
-    print('exception:', e)
+    print('exception:', type(e).__name__, e)
 finally:
     # ================== Clean up =========================
     clean = True
