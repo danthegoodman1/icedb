@@ -22,7 +22,7 @@ logFile = log.append(s3c, 1, Schema().accumulate(["a", "b", "c"], ["VARCHAR", "B
 print("created log file", logFile)
 
 # read in a log file
-s1, f1, t1 = log.readAtMaxTime(s3c, time()*1000)
+s1, f1, t1 = log.read_at_max_time(s3c, time() * 1000)
 print(s1.toJSON())
 print(list(map(lambda x: x.path, f1)))
 print(list(map(lambda x: x.path, t1)))

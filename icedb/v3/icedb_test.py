@@ -69,7 +69,7 @@ print('inserted', list(map(lambda x: x.path, inserted)))
 
 # Read the state in
 log = IceLogIO("dan-mbp")
-s1, f1, t1 = log.readAtMaxTime(s3c, round(time()*1000))
+s1, f1, t1 = log.read_at_max_time(s3c, round(time() * 1000))
 print("============= Current State =============")
 print(s1.toJSON())
 print(list(map(lambda x: x.path, f1)))
