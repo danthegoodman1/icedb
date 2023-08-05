@@ -8,9 +8,9 @@ s3c = S3Client(s3prefix="tenant", s3bucket="testbucket", s3region="us-east-1", s
                s3accesskey="user", s3secretkey="password")
 
 
-def partStrat(row: dict) -> str:
-    rowTime = datetime.utcfromtimestamp(row['ts'] / 1000)
-    part = f"cust=test/d={rowTime.strftime('%Y-%m-%d')}"
+def part_func(row: dict) -> str:
+    row_time = datetime.utcfromtimestamp(row['ts'] / 1000)
+    part = f"cust=test/d={row_time.strftime('%Y-%m-%d')}"
     return part
 
 
@@ -20,7 +20,7 @@ def format_row(row: dict) -> dict:
 
 
 ice = IceDBv3(
-    partStrat,
+    part_func,
     ['event', 'ts'],
     format_row,
     "us-east-1",
