@@ -187,18 +187,19 @@ class IceLogIO:
     def __init__(self, file_safe_hostname: str):
         self.file_safe_hostname = file_safe_hostname
 
-    def read_at_max_time(self, s3client: S3Client, timestamp: int) -> tuple[Schema, list[FileMarker], list[LogTombstone], list[str]]:
-        '''
+    @staticmethod
+    def read_at_max_time(s3client: S3Client, timestamp: int) -> tuple[Schema, list[FileMarker], list[LogTombstone], list[str]]:
+        """
         Read the current state of the log up to a given timestamp
-        '''
+        """
         logFiles = s3client.s3.list_objects_v2(
             Bucket=s3client.s3bucket,
             MaxKeys=1000,
             Prefix='/'.join([s3client.s3prefix, '_log'])
         )
 
-        totalSchema = Schema()
-        aliveFiles: Dict[str, FileMarker] = {}
+        total_schema = Schema()
+        alive_files: Dict[str, FileMarker] = {}
         tombstones: Dict[str, LogTombstone] = {}
         log_files: list[str] = []
 
@@ -209,57 +210,57 @@ class IceLogIO:
                 Key=file['Key']
             )
             jsonl = str(obj['Body'].read(), encoding="utf-8").split("\n")
-            metaJSON = json.loads(jsonl[0])
-            meta = LogMetadataFromJSON(metaJSON)
+            meta_json = json.loads(jsonl[0])
+            meta = LogMetadataFromJSON(meta_json)
             if meta.timestamp > timestamp:
                 pass
 
             # Schema
             schema = dict(json.loads(jsonl[meta.schemaLineIndex]))
-            totalSchema.accumulate(list(schema.keys()), list(schema.values()))
+            total_schema.accumulate(list(schema.keys()), list(schema.values()))
 
             # Log tombstones
             if meta.tombstoneLineIndex is not None:
                 for i in range(meta.tombstoneLineIndex, meta.fileLineIndex):
-                    tmbDict = dict(json.loads(jsonl[i]))
-                    tombstones[tmbDict["p"]] = LogTombstone(tmbDict["p"], int(tmbDict["t"]))
+                    tmb_dict = dict(json.loads(jsonl[i]))
+                    tombstones[tmb_dict["p"]] = LogTombstone(tmb_dict["p"], int(tmb_dict["t"]))
 
             # Files
             for i in range(meta.fileLineIndex, len(jsonl)):
-                fmJSON = dict(json.loads(jsonl[i]))
-                # if fmJSON["p"] in aliveFiles and "tmb" in fmJSON:
+                fm_json = dict(json.loads(jsonl[i]))
+                # if fm_json["p"] in alive_files and "tmb" in fm_json:
                 #     # Not alive, remove
-                #     del aliveFiles[fmJSON["p"]]
+                #     del alive_files[fm_json["p"]]
                 #     continue
 
                 # Otherwise add if not exists
-                fm = FileMarker(fmJSON["p"], int(fmJSON["t"]), int(fmJSON["b"]), fmJSON["tmb"] if "tmb" in fmJSON else None)
-                # if fmJSON["p"] not in aliveFiles:
-                aliveFiles[fmJSON["p"]] = fm
+                fm = FileMarker(fm_json["p"], int(fm_json["t"]), int(fm_json["b"]), fm_json["tmb"] if "tmb" in fm_json else None)
+                # if fm_json["p"] not in alive_files:
+                alive_files[fm_json["p"]] = fm
 
-        return totalSchema, list(aliveFiles.values()), list(tombstones.values()), log_files
+        return total_schema, list(alive_files.values()), list(tombstones.values()), log_files
 
     def append(self, s3client: S3Client, version: int, schema: Schema, files: list[FileMarker], tombstones: list[LogTombstone] = None) -> str:
         """
         Creates a new log file in S3, in the order of version, schema, tombstones?, files
         """
-        logFileLines: list[str] = []
+        log_file_lines: list[str] = []
         meta = LogMetadata(version, 1, 2 if tombstones is None or len(tombstones) == 0 else 2+len(tombstones), None if tombstones is None or len(tombstones) == 0 else 2)
-        logFileLines.append(meta.toJSON())
-        logFileLines.append(schema.toJSON())
+        log_file_lines.append(meta.toJSON())
+        log_file_lines.append(schema.toJSON())
         if tombstones is not None:
             for tmb in tombstones:
-                logFileLines.append(tmb.toJSON())
+                log_file_lines.append(tmb.toJSON())
         for fileMarker in files:
-            logFileLines.append(fileMarker.toJSON())
+            log_file_lines.append(fileMarker.toJSON())
 
-        fileID = f"{meta.timestamp}_{self.file_safe_hostname}"
+        file_id = f"{meta.timestamp}_{self.file_safe_hostname}"
 
         # Upload the file to S3
-        fileKey = "/".join([s3client.s3prefix, '_log', fileID+'.jsonl'])
+        file_key = "/".join([s3client.s3prefix, '_log', file_id+'.jsonl'])
         s3client.s3.put_object(
-            Body=bytes('\n'.join(logFileLines), 'utf-8'),
+            Body=bytes('\n'.join(log_file_lines), 'utf-8'),
             Bucket=s3client.s3bucket,
-            Key=fileKey
+            Key=file_key
         )
-        return fileKey
+        return file_key
