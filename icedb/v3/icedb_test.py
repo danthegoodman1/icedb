@@ -1,5 +1,5 @@
 from icedb import IceDBv3
-from log import S3Client, IceLogIO
+from log import S3Client, IceLogIO, SchemaConflictException
 from datetime import datetime
 import json
 from time import time
@@ -211,6 +211,32 @@ try:
     assert res[1][0] == 2
 
     print('results validated')
+
+    print("============= insert conflicting types ==================")
+    conflicting_out = ice.insert([{
+        "ts": 1686176939445,
+        "event": 1,
+        "user_id": 1.2,
+        "properties": {
+            "hey": "ho",
+            "numtime": 1,
+            "nested_dict": {
+                "ee": "fff"
+            }
+        }
+    }])
+    try:
+        # Read the state in
+        log = IceLogIO("dan-mbp")
+        s1, f1, t1, l1 = log.read_at_max_time(s3c, round(time() * 1000))
+        print("=== Current State ===")
+        print("schema:", s1)
+        print("files:", f1)
+        print("tombstones:", t1)
+        print("log files:", l1)
+    except SchemaConflictException as e:
+        print("Caught schema conflict, this should normally be handled at insert time")
+
     print("test successful!")
 except Exception as e:
     print('exception:', type(e).__name__, e)
