@@ -25,7 +25,7 @@ print("created log file", logFile)
 s1, f1, t1 = log.readAtMaxTime(s3c, time()*1000)
 print(s1.toJSON())
 print(list(map(lambda x: x.path, f1)))
-print(list(map(lambda x: x.path, t1)) if t1 != None else None)
+print(list(map(lambda x: x.path, t1)))
 # s2, f2, t2 = log.readAtMaxTime(s3c, time()-9*1000)
 
 logFiles = s3c.s3.list_objects_v2(

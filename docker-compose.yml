@@ -4,15 +4,15 @@ volumes:
   minio_storage: null
   crdb_storage: null
 services:
-  crdb:
-    container_name: crdb
-    image: cockroachdb/cockroach
-    ports:
-      - "26257:26257"
-      - "8080:8080"
-    command: start-single-node --insecure
-    volumes:
-      - crdb_storage:/cockroach/cockroach-data
+#  crdb:
+#    container_name: crdb
+#    image: cockroachdb/cockroach
+#    ports:
+#      - "26257:26257"
+#      - "8080:8080"
+#    command: start-single-node --insecure
+#    volumes:
+#      - crdb_storage:/cockroach/cockroach-data
   minio:
     image: minio/minio
     ports:
@@ -35,12 +35,12 @@ services:
       /usr/bin/mc mb myminio/testbucket;
       exit 0;
       "
-  clickhouse:
-    image: clickhouse/clickhouse-server:latest
-    depends_on:
-      - minio
-      - crdb
-    container_name: ch
-    volumes:
-      - ./ch/user_scripts:/var/lib/clickhouse/user_scripts:0777
-      - /workspaces/icedb/ch/functions/get_files_function.xml:/etc/clickhouse-server/get_files_function.xml
+#  clickhouse:
+#    image: clickhouse/clickhouse-server:latest
+#    depends_on:
+#      - minio
+#      - crdb
+#    container_name: ch
+#    volumes:
+#      - ./ch/user_scripts:/var/lib/clickhouse/user_scripts:0777
+#      - /workspaces/icedb/ch/functions/get_files_function.xml:/etc/clickhouse-server/get_files_function.xml

@@ -163,7 +163,7 @@ class IceLogIO:
     def __init__(self, fileSafeHostname: str):
         self.fileSafeHostname = fileSafeHostname
 
-    def readAtMaxTime(self, s3client: S3Client, timestamp: int) -> tuple[Schema, list[FileMarker], list[LogTombstone] | None]:
+    def readAtMaxTime(self, s3client: S3Client, timestamp: int) -> tuple[Schema, list[FileMarker], list[LogTombstone]]:
         '''
         Read the current state of the log up to a given timestamp
         '''

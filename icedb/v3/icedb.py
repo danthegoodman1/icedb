@@ -15,8 +15,6 @@ class IceDBv3:
     format_row: FormatRowType
     ddb: duckdb
     s3c: S3Client
-    s3_prefix: str | None
-    set_isolation: bool
     unique_row_key: str = None
     custom_merge_query: str = None
     row_group_size: int
@@ -34,7 +32,6 @@ class IceDBv3:
             s3_client: S3Client,
             file_safe_hostname: str,
             s3_use_path: bool = False,
-            set_isolation: bool = False,
             duckdb_ext_dir: str = None,
             unique_row_key: str = None,
             row_group_size: int = 122_880
@@ -42,7 +39,6 @@ class IceDBv3:
         self.partition_function = partition_function
         self.sort_order = sort_order
         self.format_row = format_row
-        self.set_isolation = set_isolation
         self.row_group_size = row_group_size
         self.file_safe_hostname = file_safe_hostname
         self.unique_row_key = unique_row_key
@@ -82,8 +78,8 @@ class IceDBv3:
             # upload parquet file
             filename = str(uuid4()) + '.parquet'
             path_parts = ['_data', part, filename]
-            if self.s3_prefix is not None:
-                path_parts = [self.s3_prefix] + path_parts
+            if self.s3c.s3prefix is not None:
+                path_parts = [self.s3c.s3prefix] + path_parts
             fullpath = '/'.join(path_parts)
             part_rows = part_map[part]
 
@@ -104,8 +100,6 @@ class IceDBv3:
             # get schema
             self.ddb.execute("describe select * from df")
             schema_df = self.ddb.df()
-            print('got schema')
-            print(schema_df)
             running_schema.accumulate(schema_df['column_name'].tolist(), schema_df['column_type'].tolist())
 
             # copy to parquet file
