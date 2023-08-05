@@ -158,10 +158,10 @@ def LogMetadataFromJSON(jsonl: dict):
 
 
 class IceLogIO:
-    fileSafeHostname: str
+    file_safe_hostname: str
 
-    def __init__(self, fileSafeHostname: str):
-        self.fileSafeHostname = fileSafeHostname
+    def __init__(self, file_safe_hostname: str):
+        self.file_safe_hostname = file_safe_hostname
 
     def read_at_max_time(self, s3client: S3Client, timestamp: int) -> tuple[Schema, list[FileMarker], list[LogTombstone]]:
         '''
@@ -228,7 +228,7 @@ class IceLogIO:
         for fileMarker in files:
             logFileLines.append(fileMarker.toJSON())
 
-        fileID = f"{meta.timestamp}_{self.fileSafeHostname}"
+        fileID = f"{meta.timestamp}_{self.file_safe_hostname}"
 
         # Upload the file to S3
         fileKey = "/".join([s3client.s3prefix, '_log', fileID+'.jsonl'])
