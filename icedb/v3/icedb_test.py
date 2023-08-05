@@ -8,7 +8,7 @@ s3c = S3Client(s3prefix="tenant", s3bucket="testbucket", s3region="us-east-1", s
 
 def partStrat(row: dict) -> str:
     rowTime = datetime.utcfromtimestamp(row['ts']/1000)
-    part = f"d={rowTime.strftime('%Y-%m-%d')}"
+    part = f"cust=test/d={rowTime.strftime('%Y-%m-%d')}"
     return part
 
 def format_row(row: dict) -> dict:
@@ -63,108 +63,115 @@ example_events = [{
     }
 }]
 
-print("============= inserting ==================")
-inserted = ice.insert(example_events)
-firstInserted = list(map(lambda x: x.path, inserted))
-print('inserted', firstInserted)
+try:
+    print("============= inserting ==================")
+    inserted = ice.insert(example_events)
+    firstInserted = list(map(lambda x: x.path, inserted))
+    print('inserted', firstInserted)
 
-# Read the state in
-log = IceLogIO("dan-mbp")
-s1, f1, t1 = log.read_at_max_time(s3c, round(time() * 1000))
-print("============= Current State =============")
-print("schema:", s1.toJSON())
-print("files:", list(map(lambda x: x.path, f1)))
-print("tombstones:", list(map(lambda x: x.path, t1)))
+    # Read the state in
+    log = IceLogIO("dan-mbp")
+    s1, f1, t1, l1 = log.read_at_max_time(s3c, round(time() * 1000))
+    print("============= Current State =============")
+    print("schema:", s1.toJSON())
+    print("files:", list(map(lambda x: x.path, f1)))
+    print("tombstones:", list(map(lambda x: x.path, t1)))
+    print("log files:", l1)
 
-# Verify the results
-query = "select count(user_id), user_id from read_parquet([{}]) group by user_id order by count(user_id) desc".format(
-    ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", f1)))
-)
-print('executing query:', query)
-# THIS IS A BAD IDEA NEVER DO THIS IN PRODUCTION
-ice.ddb.execute(query)
-res = ice.ddb.fetchall()
-print(res)
-
-assert res[0][0] == 2
-assert res[1][0] == 1
-
-print('results validated')
-
-# ================= do it again =====================
-print("============= inserting ==================")
-inserted = ice.insert(example_events)
-secondInserted = list(map(lambda x: x.path, inserted))
-print('inserted', secondInserted)
-
-# Read the state in
-log = IceLogIO("dan-mbp")
-s1, f1, t1 = log.read_at_max_time(s3c, round(time() * 1000))
-print("=== Current State ===")
-print("schema:", s1.toJSON())
-print("files:", list(map(lambda x: x.path, f1)))
-print("tombstones:", list(map(lambda x: x.path, t1)))
-
-# Verify the results
-query = "select count(user_id), user_id from read_parquet([{}]) group by user_id order by count(user_id) desc".format(
-    ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", f1)))
-)
-print('executing query:', query)
-# THIS IS A BAD IDEA NEVER DO THIS IN PRODUCTION
-ice.ddb.execute(query)
-res = ice.ddb.fetchall()
-print(res)
-
-assert res[0][0] == 4
-assert res[1][0] == 2
-
-print('results validated')
-
-# ================== Merge =========================
-print("============== merging results ==============")
-
-# TODO: merge fully
-
-# Read the state in
-log = IceLogIO("dan-mbp")
-s1, f1, t1 = log.read_at_max_time(s3c, round(time() * 1000))
-print("=== Current State ===")
-print("schema:", s1.toJSON())
-print("files:", list(map(lambda x: x.path, f1)))
-print("tombstones:", list(map(lambda x: x.path, t1)))
-
-# TODO: verify log tombstones and file marker tombstones
-expectedFileTombstones = firstInserted + secondInserted
-print("expecting file tombstones:", expectedFileTombstones)
-
-# Verify the results
-query = "select count(user_id), user_id from read_parquet([{}]) group by user_id order by count(user_id) desc".format(
-    ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", f1)))
-)
-print('executing query:', query)
-# THIS IS A BAD IDEA NEVER DO THIS IN PRODUCTION
-ice.ddb.execute(query)
-res = ice.ddb.fetchall()
-print(res)
-
-assert res[0][0] == 4
-assert res[1][0] == 2
-
-print('results validated')
-
-# ================== Clean up =========================
-clean = True
-if clean:
-    logFiles = s3c.s3.list_objects_v2(
-        Bucket=s3c.s3bucket,
-        MaxKeys=1000,
-        Prefix=s3c.s3prefix
+    # Verify the results
+    query = "select count(user_id), user_id from read_parquet([{}]) group by user_id order by count(user_id) desc".format(
+        ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", f1)))
     )
-    for file in logFiles['Contents']:
-        key = file['Key']
-        print('deleting', key)
-        s3c.s3.delete_object(
+    print('executing query:', query)
+    # THIS IS A BAD IDEA NEVER DO THIS IN PRODUCTION
+    ice.ddb.execute(query)
+    res = ice.ddb.fetchall()
+    print(res)
+
+    assert res[0][0] == 2
+    assert res[1][0] == 1
+
+    print('results validated')
+
+    # ================= do it again =====================
+    print("============= inserting ==================")
+    inserted = ice.insert(example_events)
+    secondInserted = list(map(lambda x: x.path, inserted))
+    print('inserted', secondInserted)
+
+    # Read the state in
+    log = IceLogIO("dan-mbp")
+    s1, f1, t1, l1 = log.read_at_max_time(s3c, round(time() * 1000))
+    print("=== Current State ===")
+    print("schema:", s1.toJSON())
+    print("files:", list(map(lambda x: x.path, f1)))
+    print("tombstones:", list(map(lambda x: x.path, t1)))
+    print("log files:", l1)
+
+    # Verify the results
+    query = "select count(user_id), user_id from read_parquet([{}]) group by user_id order by count(user_id) desc".format(
+        ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", f1)))
+    )
+    print('executing query:', query)
+    # THIS IS A BAD IDEA NEVER DO THIS IN PRODUCTION
+    ice.ddb.execute(query)
+    res = ice.ddb.fetchall()
+    print(res)
+
+    assert res[0][0] == 4
+    assert res[1][0] == 2
+
+    print('results validated')
+
+    # ================== Merge =========================
+    print("============== merging results ==============")
+
+    # merge fully
+    ice.merge()
+
+    # Read the state in
+    log = IceLogIO("dan-mbp")
+    s1, f1, t1, l1 = log.read_at_max_time(s3c, round(time() * 1000))
+    print("=== Current State ===")
+    print("schema:", s1.toJSON())
+    print("files:", list(map(lambda x: x.path, f1)))
+    print("tombstones:", list(map(lambda x: x.path, t1)))
+    print("log files:", l1)
+
+    # TODO: verify log tombstones and file marker tombstones
+    expectedFileTombstones = firstInserted + secondInserted
+    print("expecting file tombstones:", expectedFileTombstones)
+
+    # Verify the results
+    query = "select count(user_id), user_id from read_parquet([{}]) group by user_id order by count(user_id) desc".format(
+        ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", f1)))
+    )
+    print('executing query:', query)
+    # THIS IS A BAD IDEA NEVER DO THIS IN PRODUCTION
+    ice.ddb.execute(query)
+    res = ice.ddb.fetchall()
+    print(res)
+
+    assert res[0][0] == 4
+    assert res[1][0] == 2
+
+    print('results validated')
+    print("test successful!")
+except Exception as e:
+    print('exception:', e)
+finally:
+    # ================== Clean up =========================
+    clean = True
+    if clean:
+        logFiles = s3c.s3.list_objects_v2(
             Bucket=s3c.s3bucket,
-            Key=key
+            MaxKeys=1000,
+            Prefix=s3c.s3prefix
         )
-print("test successful!")
+        for file in logFiles['Contents']:
+            key = file['Key']
+            print('deleting', key)
+            s3c.s3.delete_object(
+                Bucket=s3c.s3bucket,
+                Key=key
+            )

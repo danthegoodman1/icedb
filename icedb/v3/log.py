@@ -82,6 +82,12 @@ class Schema:
     def toJSON(self) -> str:
         return json.dumps(self.d)
 
+    def __str__(self):
+        return self.toJSON()
+
+    def __repr__(self):
+        return self.toJSON()
+
 
 class FileMarker:
     path: str
@@ -107,6 +113,12 @@ class FileMarker:
 
         return json.dumps(d)
 
+    def __str__(self):
+        return self.toJSON()
+
+    def __repr__(self):
+        return self.toJSON()
+
 
 class LogTombstone:
     path: str
@@ -121,6 +133,12 @@ class LogTombstone:
             "p": self.path,
             "t": self.createdMS
         })
+
+    def __str__(self):
+        return self.toJSON()
+
+    def __repr__(self):
+        return self.toJSON()
 
 
 class LogMetadata:
@@ -150,6 +168,12 @@ class LogMetadata:
 
         return json.dumps(d)
 
+    def __str__(self):
+        return self.toJSON()
+
+    def __repr__(self):
+        return self.toJSON()
+
 
 def LogMetadataFromJSON(jsonl: dict):
     lm = LogMetadata(jsonl["v"], jsonl["sch"], jsonl["f"], jsonl["tmb"] if "tmb" in jsonl else None)
@@ -163,7 +187,7 @@ class IceLogIO:
     def __init__(self, file_safe_hostname: str):
         self.file_safe_hostname = file_safe_hostname
 
-    def read_at_max_time(self, s3client: S3Client, timestamp: int) -> tuple[Schema, list[FileMarker], list[LogTombstone]]:
+    def read_at_max_time(self, s3client: S3Client, timestamp: int) -> tuple[Schema, list[FileMarker], list[LogTombstone], list[str]]:
         '''
         Read the current state of the log up to a given timestamp
         '''
@@ -212,7 +236,7 @@ class IceLogIO:
                 if fmJSON["p"] not in aliveFiles:
                     aliveFiles[fmJSON["p"]] = fm
 
-        return totalSchema, list(aliveFiles.values()), list(tombstones.values())
+        return totalSchema, list(aliveFiles.values()), list(tombstones.values()), list(map(lambda x: x['Key'], logFiles['Contents']))
 
     def append(self, s3client: S3Client, version: int, schema: Schema, files: list[FileMarker], tombstones: list[LogTombstone] | None = None) -> str:
         """

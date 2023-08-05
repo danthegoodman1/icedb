@@ -122,7 +122,7 @@ class IceDBv3:
 
         return file_markers
 
-    def merge(self, max_file_size, max_file_count=10, asc=False, partition_prefix: str = None,
+    def merge(self, max_file_size=10_000_000, max_file_count=10, asc=False,
                     custom_merge_query: str = None) -> int:
         """
         desc merge should be fast, working on active partitions. asc merge should be slow and in background,
@@ -130,7 +130,39 @@ class IceDBv3:
 
         Returns the number of files merged.
         """
-        # cursor scan active files in the direction
+        logio = IceLogIO(self.file_safe_hostname)
+        cur_schema, cur_files, cur_tombstones, all_log_files = logio.read_at_max_time(self.s3c, round(time() * 1000))
+
+        # Group by partition
+        partitions: Dict[str, list[FileMarker]] = {}
+        for file in cur_files:
+            file_path = file.path
+            if self.s3c.s3prefix is not None:
+                file_path = file_path.removeprefix(self.s3c.s3prefix + "/_data/")
+            print("got file path after removing prefix:", file_path)
+            path_parts = file_path.split("/")
+            print("got path parts", path_parts)
+            # remove the file name
+            partition = '/'.join(path_parts[:-1])
+            print('got partition', partition, "for file", file.path)
+            if partition not in partitions:
+                partitions[partition] = []
+            partitions[partition].append(file)
+
+        print("got final partitions map:", partitions)
+
+        # sort the dict
+        partitions = dict(sorted(partitions.items(), key=lambda item: len(item[1]), reverse=not asc))
+        for key, val in partitions.items():
+            if len(val) <= 1:
+                print('skipping partition', key, 'not enough items to merge')
+                continue
+            # sort the items in the array by file size, asc
+            sorted_files = sorted(val, key=lambda item: item.fileBytes)
+            print('got sorted files', sorted_files)
+
+
+        # create the new log file with tombstones
         pass
 
     def get_files(self, gte_part: str, lte_part: str) -> List[str]:
