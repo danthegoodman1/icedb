@@ -63,20 +63,96 @@ example_events = [{
     }
 }]
 
-
+print("============= inserting ==================")
 inserted = ice.insert(example_events)
-print('inserted', list(map(lambda x: x.path, inserted)))
+firstInserted = list(map(lambda x: x.path, inserted))
+print('inserted', firstInserted)
 
 # Read the state in
 log = IceLogIO("dan-mbp")
 s1, f1, t1 = log.read_at_max_time(s3c, round(time() * 1000))
 print("============= Current State =============")
-print(s1.toJSON())
-print(list(map(lambda x: x.path, f1)))
-print(list(map(lambda x: x.path, t1)))
+print("schema:", s1.toJSON())
+print("files:", list(map(lambda x: x.path, f1)))
+print("tombstones:", list(map(lambda x: x.path, t1)))
 
+# Verify the results
+query = "select count(user_id), user_id from read_parquet([{}]) group by user_id order by count(user_id) desc".format(
+    ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", f1)))
+)
+print('executing query:', query)
+# THIS IS A BAD IDEA NEVER DO THIS IN PRODUCTION
+ice.ddb.execute(query)
+res = ice.ddb.fetchall()
+print(res)
 
-# Clean up
+assert res[0][0] == 2
+assert res[1][0] == 1
+
+print('results validated')
+
+# ================= do it again =====================
+print("============= inserting ==================")
+inserted = ice.insert(example_events)
+secondInserted = list(map(lambda x: x.path, inserted))
+print('inserted', secondInserted)
+
+# Read the state in
+log = IceLogIO("dan-mbp")
+s1, f1, t1 = log.read_at_max_time(s3c, round(time() * 1000))
+print("=== Current State ===")
+print("schema:", s1.toJSON())
+print("files:", list(map(lambda x: x.path, f1)))
+print("tombstones:", list(map(lambda x: x.path, t1)))
+
+# Verify the results
+query = "select count(user_id), user_id from read_parquet([{}]) group by user_id order by count(user_id) desc".format(
+    ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", f1)))
+)
+print('executing query:', query)
+# THIS IS A BAD IDEA NEVER DO THIS IN PRODUCTION
+ice.ddb.execute(query)
+res = ice.ddb.fetchall()
+print(res)
+
+assert res[0][0] == 4
+assert res[1][0] == 2
+
+print('results validated')
+
+# ================== Merge =========================
+print("============== merging results ==============")
+
+# TODO: merge fully
+
+# Read the state in
+log = IceLogIO("dan-mbp")
+s1, f1, t1 = log.read_at_max_time(s3c, round(time() * 1000))
+print("=== Current State ===")
+print("schema:", s1.toJSON())
+print("files:", list(map(lambda x: x.path, f1)))
+print("tombstones:", list(map(lambda x: x.path, t1)))
+
+# TODO: verify log tombstones and file marker tombstones
+expectedFileTombstones = firstInserted + secondInserted
+print("expecting file tombstones:", expectedFileTombstones)
+
+# Verify the results
+query = "select count(user_id), user_id from read_parquet([{}]) group by user_id order by count(user_id) desc".format(
+    ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", f1)))
+)
+print('executing query:', query)
+# THIS IS A BAD IDEA NEVER DO THIS IN PRODUCTION
+ice.ddb.execute(query)
+res = ice.ddb.fetchall()
+print(res)
+
+assert res[0][0] == 4
+assert res[1][0] == 2
+
+print('results validated')
+
+# ================== Clean up =========================
 clean = True
 if clean:
     logFiles = s3c.s3.list_objects_v2(
@@ -91,3 +167,4 @@ if clean:
             Bucket=s3c.s3bucket,
             Key=key
         )
+print("test successful!")

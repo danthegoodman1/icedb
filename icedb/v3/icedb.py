@@ -122,7 +122,7 @@ class IceDBv3:
 
         return file_markers
 
-    def merge_files(self, max_file_size, max_file_count=10, asc=False, partition_prefix: str = None,
+    def merge(self, max_file_size, max_file_count=10, asc=False, partition_prefix: str = None,
                     custom_merge_query: str = None) -> int:
         """
         desc merge should be fast, working on active partitions. asc merge should be slow and in background,
@@ -136,7 +136,7 @@ class IceDBv3:
     def get_files(self, gte_part: str, lte_part: str) -> List[str]:
         pass
 
-    def remove_inactive_parts(self, min_age_ms: int, partition_prefix: str = None, limit=10) -> str:
+    def tombstone_cleanup(self, min_age_ms: int, partition_prefix: str = None, limit=10) -> str:
         """
         Removes parquet files that are no longer active, and are older than some age. Returns the number of files deleted.
 
