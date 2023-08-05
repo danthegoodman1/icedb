@@ -185,6 +185,8 @@ class IceLogIO:
             jsonl = str(obj['Body'].read(), encoding="utf-8").split("\n")
             metaJSON = json.loads(jsonl[0])
             meta = LogMetadataFromJSON(metaJSON)
+            if meta.timestamp > timestamp:
+                pass
 
             # Schema
             schema = dict(json.loads(jsonl[meta.schemaLineIndex]))
