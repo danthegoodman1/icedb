@@ -15,8 +15,8 @@ class IceDBv3:
     format_row: FormatRowType
     ddb: duckdb
     s3c: S3Client
-    unique_row_key: str = None
-    custom_merge_query: str = None
+    unique_row_key: str | None
+    custom_merge_query: str | None
     row_group_size: int
     file_safe_hostname: str
 
@@ -33,6 +33,7 @@ class IceDBv3:
             file_safe_hostname: str,
             s3_use_path: bool = False,
             duckdb_ext_dir: str = None,
+            custom_merge_query: str = None,
             unique_row_key: str = None,
             row_group_size: int = 122_880
     ):
@@ -43,6 +44,7 @@ class IceDBv3:
         self.file_safe_hostname = file_safe_hostname
         self.unique_row_key = unique_row_key
         self.s3c = s3_client
+        self.custom_merge_query = custom_merge_query
 
         self.ddb = duckdb.connect(":memory:")
         self.ddb.execute("install httpfs")
