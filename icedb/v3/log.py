@@ -66,13 +66,13 @@ class Schema:
         for col in self.d.keys():
             cols.append(col)
         return cols
-    
+
     def types(self) -> list[str]:
         dataTypes = []
         for col in self.d.keys():
             dataTypes.append(self.d[col])
         return dataTypes
-    
+
     def pairs(self) -> list[list[str]]:
         pairs = []
         for col in self.d.keys():
@@ -130,7 +130,7 @@ class LogMetadata:
     tombstoneLineIndex: int | None
     timestamp: int
 
-    def __init__(self, version: int, schemaLineIndex: int, fileLineIndex: int, tombstoneLineIndex: int | None):
+    def __init__(self, version: int, schemaLineIndex: int, fileLineIndex: int, tombstoneLineIndex: int = None):
         self.version = version
         self.schemaLineIndex = schemaLineIndex
         self.fileLineIndex = fileLineIndex
@@ -149,7 +149,7 @@ class LogMetadata:
             d["tmb"] = self.tombstoneLineIndex
 
         return json.dumps(d)
-    
+
 
 def LogMetadataFromJSON(jsonl: dict):
     lm = LogMetadata(jsonl["v"], jsonl["sch"], jsonl["f"], jsonl["tmb"] if "tmb" in jsonl else None)
@@ -170,7 +170,7 @@ class IceLogIO:
         logFiles = s3client.s3.list_objects_v2(
             Bucket=s3client.s3bucket,
             MaxKeys=1000,
-            Prefix=s3client.s3prefix
+            Prefix='/'.join([s3client.s3prefix, '_log'])
         )
 
         totalSchema = Schema()
@@ -231,7 +231,7 @@ class IceLogIO:
         fileID = f"{meta.timestamp}_{self.fileSafeHostname}"
 
         # Upload the file to S3
-        fileKey = f"{s3client.s3prefix}/{fileID}.jsonl"
+        fileKey = "/".join([s3client.s3prefix, '_log', fileID+'.jsonl'])
         s3client.s3.put_object(
             Body=bytes('\n'.join(logFileLines), 'utf-8'),
             Bucket=s3client.s3bucket,
