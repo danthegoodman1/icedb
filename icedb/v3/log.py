@@ -146,14 +146,16 @@ class LogMetadata:
     schemaLineIndex: int
     fileLineIndex: int
     tombstoneLineIndex: int | None
+    merged_ts: int | None
     timestamp: int
 
-    def __init__(self, version: int, schemaLineIndex: int, fileLineIndex: int, tombstoneLineIndex: int = None):
+    def __init__(self, version: int, schemaLineIndex: int, fileLineIndex: int, tombstoneLineIndex: int = None, merged_ts: int = None):
         self.version = version
         self.schemaLineIndex = schemaLineIndex
         self.fileLineIndex = fileLineIndex
         self.tombstoneLineIndex = tombstoneLineIndex
         self.timestamp = round(time()*1000)
+        self.merged_ts = merged_ts
 
     def toJSON(self) -> str:
         d = {
@@ -166,6 +168,9 @@ class LogMetadata:
         if self.tombstoneLineIndex is not None:
             d["tmb"] = self.tombstoneLineIndex
 
+        if self.merged_ts is not None:
+            d["m"] = self.merged_ts
+
         return json.dumps(d)
 
     def __str__(self):
@@ -176,7 +181,7 @@ class LogMetadata:
 
 
 def LogMetadataFromJSON(jsonl: dict):
-    lm = LogMetadata(jsonl["v"], jsonl["sch"], jsonl["f"], jsonl["tmb"] if "tmb" in jsonl else None)
+    lm = LogMetadata(jsonl["v"], jsonl["sch"], jsonl["f"], jsonl["tmb"] if "tmb" in jsonl else None, jsonl["m"] if "m" in jsonl else None)
     lm.timestamp = jsonl["t"]
     return lm
 
@@ -188,9 +193,9 @@ class IceLogIO:
         self.file_safe_hostname = file_safe_hostname
 
     @staticmethod
-    def read_at_max_time(s3client: S3Client, timestamp: int) -> tuple[Schema, list[FileMarker], list[LogTombstone], list[str]]:
+    def reverse_read(s3client: S3Client) -> tuple[Schema, list[FileMarker], list[str]]:
         """
-        Read the current state of the log up to a given timestamp
+        Reads the current state
         """
         logFiles = s3client.s3.list_objects_v2(
             Bucket=s3client.s3bucket,
@@ -203,7 +208,40 @@ class IceLogIO:
         tombstones: Dict[str, LogTombstone] = {}
         log_files: list[str] = []
 
-        for file in logFiles['Contents']:
+        # We can extract the creation time in ms from the file name
+
+
+        pass
+
+    @staticmethod
+    def read_at_max_time(s3client: S3Client, timestamp: int) -> tuple[Schema, list[FileMarker], list[LogTombstone], list[str]]:
+        """
+        Read the current state of the log up to a given timestamp
+        """
+        logFiles = []
+        no_more_files = False
+        continuation_token = ""
+        while not no_more_files:
+            res = s3client.s3.list_objects_v2(
+                Bucket=s3client.s3bucket,
+                MaxKeys=1000,
+                Prefix='/'.join([s3client.s3prefix, '_log'])
+            ) if continuation_token != "" else s3client.s3.list_objects_v2(
+                Bucket=s3client.s3bucket,
+                MaxKeys=1000,
+                Prefix='/'.join([s3client.s3prefix, '_log'])
+            )
+            logFiles += res['Contents']
+            no_more_files = not res['IsTruncated']
+            if not no_more_files:
+                continuation_token = res['NextContinuationToken']
+
+        total_schema = Schema()
+        alive_files: Dict[str, FileMarker] = {}
+        tombstones: Dict[str, LogTombstone] = {}
+        log_files: list[str] = []
+
+        for file in logFiles:
             log_files.append(file['Key'])
             obj = s3client.s3.get_object(
                 Bucket=s3client.s3bucket,
@@ -240,7 +278,7 @@ class IceLogIO:
 
         return total_schema, list(alive_files.values()), list(tombstones.values()), log_files
 
-    def append(self, s3client: S3Client, version: int, schema: Schema, files: list[FileMarker], tombstones: list[LogTombstone] = None) -> str:
+    def append(self, s3client: S3Client, version: int, schema: Schema, files: list[FileMarker], tombstones: list[LogTombstone] = None) -> tuple[str, LogMetadata]:
         """
         Creates a new log file in S3, in the order of version, schema, tombstones?, files
         """
@@ -263,4 +301,4 @@ class IceLogIO:
             Bucket=s3client.s3bucket,
             Key=file_key
         )
-        return file_key
+        return file_key, meta

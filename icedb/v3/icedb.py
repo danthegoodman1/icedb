@@ -117,13 +117,13 @@ class IceDBv3:
 
         # Append to log
         logio = IceLogIO(self.file_safe_hostname)
-        logio.append(self.s3c, 1, running_schema, file_markers)
+        log_path, log_meta = logio.append(self.s3c, 1, running_schema, file_markers)
 
         return file_markers
 
     def merge(self, max_file_size=10_000_000, max_file_count=10, asc=False,
               custom_merge_query: str = None) -> tuple[
-        str | None, FileMarker | None, str | None, list[FileMarker] | None]:
+        str | None, FileMarker | None, str | None, list[FileMarker] | None, LogMetadata | None]:
         """
         desc merge should be fast, working on active partitions. asc merge should be slow and in background,
         slowly fully optimizes partitions over time.
@@ -202,7 +202,7 @@ class IceDBv3:
 
                 new_tombstones = list(map(lambda x: LogTombstone(x, now), filter(lambda x: x not in cur_tombstones, all_log_files)))
 
-                new_log = logio.append(
+                new_log, meta = logio.append(
                     self.s3c,
                     1,
                     cur_schema,
@@ -212,10 +212,10 @@ class IceDBv3:
                     cur_tombstones + new_tombstones
                 )
 
-                return new_log, new_file_marker, partition, acc_file_markers
+                return new_log, new_file_marker, partition, acc_file_markers, meta
 
         # otherwise we did not merge
-        return None, None, None, None
+        return None, None, None, None, None
 
     def get_files(self, gte_part: str, lte_part: str) -> List[str]:
         pass

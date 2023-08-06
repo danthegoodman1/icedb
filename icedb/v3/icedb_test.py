@@ -171,7 +171,7 @@ try:
     previous_logs = sorted(l1)
 
     # merge fully
-    l1, new_file, partition, merged_files = ice.merge()
+    l1, new_file, partition, merged_files, meta = ice.merge()
     if l1 is not None:
         print("merged", l1, new_file, partition, merged_files)
 
@@ -239,7 +239,8 @@ try:
 
     print("test successful!")
 except Exception as e:
-    print('exception:', type(e).__name__, e)
+    # print('exception:', type(e).__name__, e)
+    raise e
 finally:
     # ================== Clean up =========================
     clean = True
