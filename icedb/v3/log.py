@@ -113,7 +113,7 @@ class FileMarker:
         self.tombstone = tombstone
         self.vir_source_log_file = None
 
-    def toJSON(self) -> str:
+    def json(self) -> str:
         d = {
             "p": self.path,
             "b": self.fileBytes,
@@ -127,19 +127,19 @@ class FileMarker:
 
     def __str__(self):
         if self.vir_source_log_file is not None:
-            j = json.loads(self.toJSON())
+            j = json.loads(self.json())
             j["vir_source_log_file"] = self.vir_source_log_file
             return json.dumps(j)
         else:
-            return self.toJSON()
+            return self.json()
 
     def __repr__(self):
         if self.vir_source_log_file is not None:
-            j = json.loads(self.toJSON())
+            j = json.loads(self.json())
             j["vir_source_log_file"] = self.vir_source_log_file
             return json.dumps(j)
         else:
-            return self.toJSON()
+            return self.json()
 
 
 class LogTombstone:
@@ -357,7 +357,7 @@ class IceLogIO:
             for tmb in tombstones:
                 log_file_lines.append(tmb.toJSON())
         for fileMarker in files:
-            log_file_lines.append(fileMarker.toJSON())
+            log_file_lines.append(fileMarker.json())
 
         file_id = f"{meta.timestamp}"
         if merge_ts is not None:
