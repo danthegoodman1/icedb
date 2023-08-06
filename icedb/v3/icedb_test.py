@@ -283,6 +283,10 @@ try:
     print("got actual alive files:", alive_file_paths)
     assert len(alive_file_paths) == 5
 
+    dead_file_paths = list(map(lambda x: x.path, filter(lambda x: x.tombstone is not None, f1)))
+    print("got actual dead files:", dead_file_paths)
+    assert len(dead_file_paths) == 0
+
     alive_files = list(filter(lambda x: x.tombstone is None, f1))
     query = "select count(user_id), user_id from read_parquet([{}]) group by user_id order by count(user_id) desc".format(
         ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
