@@ -296,7 +296,7 @@ class IceLogIO:
     def reverse_read(self, s3client: S3Client, max_ts_ms: int = None) -> tuple[Schema, list[FileMarker],
     list[LogTombstone], list[str]]:
         """
-        Reads the current state
+        DEPRECATED! Reads the current state
         """
         if max_ts_ms is None:
             max_ts_ms = round(time() * 1000)
