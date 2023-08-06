@@ -195,8 +195,94 @@ class IceLogIO:
     def __init__(self, path_safe_hostname: str):
         self.path_safe_hostname = path_safe_hostname
 
-    @staticmethod
-    def reverse_read(s3client: S3Client, max_ts_ms: int = None) -> tuple[Schema, list[FileMarker], list[LogTombstone], list[str]]:
+    def __read_log_forward(self, s3client: S3Client, s3_files: list[str]) -> tuple[Schema, list[FileMarker],
+    list[LogTombstone], list[str]]:
+        """
+        Reads the current state of the log for a given set of files
+        """
+        total_schema = Schema()
+        file_markers: Dict[str, FileMarker] = {}
+        tombstones: Dict[str, LogTombstone] = {}
+        log_files: list[str] = []
+        # sanity just make sure they are sorted
+        s3_files = sorted(s3_files)
+
+        for file in s3_files:
+            log_files.append(file)
+            obj = s3client.s3.get_object(
+                Bucket=s3client.s3bucket,
+                Key=file
+            )
+            jsonl = str(obj['Body'].read(), encoding="utf-8").split("\n")
+            meta_json = json.loads(jsonl[0])
+            meta = LogMetadataFromJSON(meta_json)
+
+            # Schema
+            schema = dict(json.loads(jsonl[meta.schemaLineIndex]))
+            total_schema.accumulate(list(schema.keys()), list(schema.values()))
+
+            # Log tombstones
+            if meta.tombstoneLineIndex is not None:
+                for i in range(meta.tombstoneLineIndex, meta.fileLineIndex):
+                    tmb_dict = dict(json.loads(jsonl[i]))
+                    tombstones[tmb_dict["p"]] = LogTombstone(tmb_dict["p"], int(tmb_dict["t"]))
+
+            # Files
+            for i in range(meta.fileLineIndex, len(jsonl)):
+                fm_json = dict(json.loads(jsonl[i]))
+                # if fm_json["p"] in file_markers and "tmb" in fm_json:
+                #     # Not alive, remove
+                #     del file_markers[fm_json["p"]]
+                #     continue
+
+                # Otherwise add if not exists
+                fm = FileMarker(fm_json["p"], int(fm_json["t"]), int(fm_json["b"]),
+                                fm_json["tmb"] if "tmb" in fm_json else None)
+                # if fm_json["p"] not in file_markers:
+                file_markers[fm_json["p"]] = fm
+
+        if len(log_files) == 0:
+            raise NoLogFilesException
+
+        return total_schema, list(file_markers.values()), list(tombstones.values()), log_files
+
+    def read_at_max_time(self, s3client: S3Client, timestamp: int) -> tuple[Schema, list[FileMarker],
+    list[LogTombstone], list[str]]:
+        """
+        Read the current state of the log up to a given timestamp
+        """
+        s3_files: list[dict] = []
+        no_more_files = False
+        continuation_token = ""
+        while not no_more_files:
+            res = s3client.s3.list_objects_v2(
+                Bucket=s3client.s3bucket,
+                MaxKeys=1000,
+                Prefix='/'.join([s3client.s3prefix, '_log'])
+            ) if continuation_token != "" else s3client.s3.list_objects_v2(
+                Bucket=s3client.s3bucket,
+                MaxKeys=1000,
+                Prefix='/'.join([s3client.s3prefix, '_log'])
+            )
+            s3_files += res['Contents']
+            no_more_files = not res['IsTruncated']
+            if not no_more_files:
+                continuation_token = res['NextContinuationToken']
+
+        if len(s3_files) == 0:
+            raise NoLogFilesException
+
+        # Filter out files that are too old
+        ex = get_log_file_time(s3_files[0]['Key'])
+        s3_files = list(filter(lambda x: get_log_file_time(x['Key'])[0] < timestamp, s3_files))
+
+        if len(s3_files) == 0:
+            raise NoLogFilesException
+
+        return self.__read_log_forward(s3client, list(map(lambda x: x['Key'], s3_files)))
+
+    def reverse_read(self, s3client: S3Client, max_ts_ms: int = None) -> tuple[Schema, list[FileMarker],
+    list[LogTombstone], list[str]]:
         """
         Reads the current state
         """
@@ -244,119 +330,7 @@ class IceLogIO:
             raise NoLogFilesException
 
         # Now parse files forward like normal reader (ascending)
-        relevant_log_files = sorted(relevant_log_files)
-
-        total_schema = Schema()
-        alive_files: Dict[str, FileMarker] = {}
-        tombstones: Dict[str, LogTombstone] = {}
-        log_files: list[str] = []
-
-        for file in relevant_log_files:
-            log_files.append(file)
-            obj = s3client.s3.get_object(
-                Bucket=s3client.s3bucket,
-                Key=file
-            )
-            jsonl = str(obj['Body'].read(), encoding="utf-8").split("\n")
-            meta_json = json.loads(jsonl[0])
-            meta = LogMetadataFromJSON(meta_json)
-
-            # Schema
-            schema = dict(json.loads(jsonl[meta.schemaLineIndex]))
-            total_schema.accumulate(list(schema.keys()), list(schema.values()))
-
-            # Log tombstones
-            if meta.tombstoneLineIndex is not None:
-                for i in range(meta.tombstoneLineIndex, meta.fileLineIndex):
-                    tmb_dict = dict(json.loads(jsonl[i]))
-                    tombstones[tmb_dict["p"]] = LogTombstone(tmb_dict["p"], int(tmb_dict["t"]))
-
-            # Files
-            for i in range(meta.fileLineIndex, len(jsonl)):
-                fm_json = dict(json.loads(jsonl[i]))
-                # if fm_json["p"] in alive_files and "tmb" in fm_json:
-                #     # Not alive, remove
-                #     del alive_files[fm_json["p"]]
-                #     continue
-
-                # Otherwise add if not exists
-                fm = FileMarker(fm_json["p"], int(fm_json["t"]), int(fm_json["b"]),
-                                fm_json["tmb"] if "tmb" in fm_json else None)
-                # if fm_json["p"] not in alive_files:
-                alive_files[fm_json["p"]] = fm
-
-        return total_schema, list(alive_files.values()), list(tombstones.values()), log_files
-
-    @staticmethod
-    def read_at_max_time(s3client: S3Client, timestamp: int) -> tuple[Schema, list[FileMarker], list[LogTombstone], list[str]]:
-        """
-        Read the current state of the log up to a given timestamp
-        """
-        s3_files: list[dict] = []
-        no_more_files = False
-        continuation_token = ""
-        while not no_more_files:
-            res = s3client.s3.list_objects_v2(
-                Bucket=s3client.s3bucket,
-                MaxKeys=1000,
-                Prefix='/'.join([s3client.s3prefix, '_log'])
-            ) if continuation_token != "" else s3client.s3.list_objects_v2(
-                Bucket=s3client.s3bucket,
-                MaxKeys=1000,
-                Prefix='/'.join([s3client.s3prefix, '_log'])
-            )
-            s3_files += res['Contents']
-            no_more_files = not res['IsTruncated']
-            if not no_more_files:
-                continuation_token = res['NextContinuationToken']
-
-        if len(s3_files) == 0:
-            raise NoLogFilesException
-
-        total_schema = Schema()
-        alive_files: Dict[str, FileMarker] = {}
-        tombstones: Dict[str, LogTombstone] = {}
-        log_files: list[str] = []
-
-        for file in s3_files:
-            log_files.append(file['Key'])
-            obj = s3client.s3.get_object(
-                Bucket=s3client.s3bucket,
-                Key=file['Key']
-            )
-            jsonl = str(obj['Body'].read(), encoding="utf-8").split("\n")
-            meta_json = json.loads(jsonl[0])
-            meta = LogMetadataFromJSON(meta_json)
-            if meta.timestamp > timestamp:
-                pass
-
-            # Schema
-            schema = dict(json.loads(jsonl[meta.schemaLineIndex]))
-            total_schema.accumulate(list(schema.keys()), list(schema.values()))
-
-            # Log tombstones
-            if meta.tombstoneLineIndex is not None:
-                for i in range(meta.tombstoneLineIndex, meta.fileLineIndex):
-                    tmb_dict = dict(json.loads(jsonl[i]))
-                    tombstones[tmb_dict["p"]] = LogTombstone(tmb_dict["p"], int(tmb_dict["t"]))
-
-            # Files
-            for i in range(meta.fileLineIndex, len(jsonl)):
-                fm_json = dict(json.loads(jsonl[i]))
-                # if fm_json["p"] in alive_files and "tmb" in fm_json:
-                #     # Not alive, remove
-                #     del alive_files[fm_json["p"]]
-                #     continue
-
-                # Otherwise add if not exists
-                fm = FileMarker(fm_json["p"], int(fm_json["t"]), int(fm_json["b"]), fm_json["tmb"] if "tmb" in fm_json else None)
-                # if fm_json["p"] not in alive_files:
-                alive_files[fm_json["p"]] = fm
-
-        if len(log_files) == 0:
-            raise NoLogFilesException
-
-        return total_schema, list(alive_files.values()), list(tombstones.values()), log_files
+        return self.__read_log_forward(s3client, relevant_log_files)
 
     def append(self, s3client: S3Client, version: int, schema: Schema, files: list[FileMarker], tombstones: list[LogTombstone] = None, merge_ts: int = None) -> tuple[str, LogMetadata]:
         """
@@ -385,3 +359,18 @@ class IceLogIO:
             Key=file_key
         )
         return file_key, meta
+
+def get_log_file_time(file_name: str) -> tuple[int, int | None]:
+    """
+    Returns the timestamp of the file, and optionally the merge timestamp if it exists
+    """
+    file_name = file_name.split("/")[-1]
+    us_parts = file_name.split("_")
+    # Get timestamp and merge timestamp
+    file_ts = int(us_parts[0])
+    merge_ts: int | None = None
+    if us_parts[1] == "merged" and len(us_parts) > 3:
+        print("found a merge file", file_name)
+        # We found a merge file
+        merge_ts = int(us_parts[2])
+    return file_ts, merge_ts
