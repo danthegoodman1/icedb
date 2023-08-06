@@ -2,7 +2,7 @@ from typing import List, Callable, Dict
 import duckdb
 from uuid import uuid4
 import pandas as pd
-from log import IceLogIO, Schema, LogMetadata, S3Client, FileMarker, LogTombstone
+from log import IceLogIO, Schema, LogMetadata, S3Client, FileMarker, LogTombstone, get_log_file_time
 from time import time
 
 PartitionFunctionType = Callable[[dict], str]
@@ -159,8 +159,9 @@ class IceDBv3:
             for file_marker in sorted_file_markers:
                 acc_bytes += file_marker.fileBytes
                 acc_file_markers.append(file_marker)
-                if acc_bytes >= max_file_size and len(acc_file_markers) > 1 and len(acc_file_markers) >= max_file_count:
+                if acc_bytes >= max_file_size or len(acc_file_markers) > 1 and len(acc_file_markers) >= max_file_count:
                     # then we merge
+                    print("-----------------hit max statement, exiting")
                     break
             if len(acc_file_markers) > 1:
                 # merge data parts
@@ -187,22 +188,27 @@ class IceDBv3:
                     Key=fullpath
                 )
                 merged_file_size = obj['ContentLength']
-                print("merged file size", merged_file_size)
-                # 1618 before optimization
+
+                # Now we need to get the current state of the files we just merged, and write that plus the new state
+                # We can keep the current schema
+                merged_log_files = list(map(lambda x: x.vir_source_log_file, acc_file_markers))
+                print("reading the merged state from merged log files", merged_log_files)
+                m_schema, m_file_markers, m_tombstones = logio.read_log_forward(self.s3c, merged_log_files)
 
                 # create new log file with tombstones
                 acc_file_paths = list(map(lambda x: x.path, acc_file_markers))
-                now = round(time() * 1000)
-                new_file_marker = FileMarker(fullpath, now, merged_file_size)
+                merged_time = round(time() * 1000)
+                new_file_marker = FileMarker(fullpath, merged_time, merged_file_size)
 
                 updated_markers = list(map(lambda x: FileMarker(
                     x.path,
                     x.createdMS,
                     x.fileBytes,
-                    now if x.path in acc_file_paths else x.tombstone),
+                    merged_time if x.path in acc_file_paths else x.tombstone),
                                            file_markers))
 
-                new_tombstones = list(map(lambda x: LogTombstone(x, now), filter(lambda x: x not in cur_tombstones, all_log_files)))
+                new_tombstones = list(map(lambda x: LogTombstone(x, merged_time),
+                                          merged_log_files))
 
                 new_log, meta = logio.append(
                     self.s3c,
@@ -211,8 +217,8 @@ class IceDBv3:
                     updated_markers + [
                         new_file_marker
                     ],
-                    cur_tombstones + new_tombstones,
-                    merge_ts=int(all_log_files[-1].split("/")[-1].split("_")[0])
+                    m_tombstones + new_tombstones,
+                    merge_ts=get_log_file_time(merged_log_files[-1].split("/")[-1])[0]
                 )
 
                 return new_log, new_file_marker, partition, acc_file_markers, meta
