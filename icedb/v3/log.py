@@ -103,6 +103,9 @@ class FileMarker:
     fileBytes: int
     tombstone: int | None
 
+    # Only used for reading state, not included in serialization
+    vir_source_log_file: str | None
+
     def __init__(self, path: str, createdMS: int, fileBytes: int, tombstone: int | None = None):
         self.path = path
         self.createdMS = createdMS
@@ -122,10 +125,20 @@ class FileMarker:
         return json.dumps(d)
 
     def __str__(self):
-        return self.toJSON()
+        if self.vir_source_log_file is not None:
+            j = json.loads(self.toJSON())
+            j["vir_source_log_file"] = self.vir_source_log_file
+            return json.dumps(j)
+        else:
+            return self.toJSON()
 
     def __repr__(self):
-        return self.toJSON()
+        if self.vir_source_log_file is not None:
+            j = json.loads(self.toJSON())
+            j["vir_source_log_file"] = self.vir_source_log_file
+            return json.dumps(j)
+        else:
+            return self.toJSON()
 
 
 class LogTombstone:
@@ -196,7 +209,7 @@ class IceLogIO:
         self.path_safe_hostname = path_safe_hostname
 
     def __read_log_forward(self, s3client: S3Client, s3_files: list[str]) -> tuple[Schema, list[FileMarker],
-    list[LogTombstone], list[str]]:
+    list[LogTombstone]]:
         """
         Reads the current state of the log for a given set of files
         """
@@ -230,21 +243,17 @@ class IceLogIO:
             # Files
             for i in range(meta.fileLineIndex, len(jsonl)):
                 fm_json = dict(json.loads(jsonl[i]))
-                # if fm_json["p"] in file_markers and "tmb" in fm_json:
-                #     # Not alive, remove
-                #     del file_markers[fm_json["p"]]
-                #     continue
 
                 # Otherwise add if not exists
                 fm = FileMarker(fm_json["p"], int(fm_json["t"]), int(fm_json["b"]),
                                 fm_json["tmb"] if "tmb" in fm_json else None)
-                # if fm_json["p"] not in file_markers:
+                fm.vir_source_log_file = file
                 file_markers[fm_json["p"]] = fm
 
         if len(log_files) == 0:
             raise NoLogFilesException
 
-        return total_schema, list(file_markers.values()), list(tombstones.values()), log_files
+        return total_schema, list(file_markers.values()), list(tombstones.values())
 
     def read_at_max_time(self, s3client: S3Client, timestamp: int) -> tuple[Schema, list[FileMarker],
     list[LogTombstone], list[str]]:
@@ -279,7 +288,9 @@ class IceLogIO:
         if len(s3_files) == 0:
             raise NoLogFilesException
 
-        return self.__read_log_forward(s3client, list(map(lambda x: x['Key'], s3_files)))
+        log_files = list(map(lambda x: x['Key'], s3_files))
+        schema, file_markers, log_tombstones = self.__read_log_forward(s3client, log_files)
+        return schema, file_markers, log_tombstones, log_files
 
     def reverse_read(self, s3client: S3Client, max_ts_ms: int = None) -> tuple[Schema, list[FileMarker],
     list[LogTombstone], list[str]]:
@@ -330,7 +341,8 @@ class IceLogIO:
             raise NoLogFilesException
 
         # Now parse files forward like normal reader (ascending)
-        return self.__read_log_forward(s3client, relevant_log_files)
+        schema, file_markers, log_tombstones = self.__read_log_forward(s3client, relevant_log_files)
+        return schema, file_markers, log_tombstones, relevant_log_files
 
     def append(self, s3client: S3Client, version: int, schema: Schema, files: list[FileMarker], tombstones: list[LogTombstone] = None, merge_ts: int = None) -> tuple[str, LogMetadata]:
         """

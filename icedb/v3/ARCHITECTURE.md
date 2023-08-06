@@ -83,9 +83,10 @@ When a merge occurs, both data parts and log files are merged. A newly created l
 1. New data parts created in the merge (should be 1) (`f`)
 2. Files that were part of the merge, marked with tombstone references (`f`)
 3. Files that were not part of the merge, marked alive (`f`)
-4. Tombstones of the logs files invovled in the merge (`tmb`)
+4. Tombstones of the logs files involved in the merge (`tmb`)
 
-The reason for copying the state of untouched files is that the new log file represents a new view of modified data. If log files A and B were merged into C, then A and B represent a stale version of the data and only exist to prevent breaking existing listquery operations from not being able to find their files.
+The reason for copying the state of untouched files is that the new log file represents a new view of modified data. 
+If log files A and B were merged into C, then A and B represent a stale version of the data and only exist to prevent breaking existing list query operations from not being able to find their files.
 
 Merged log files are not immediately deleted to prevent issues with current operations, and are marked as merged in the new log file so they are able to be cleaned up. You must to ensure that files are only cleaned long after they could be in use (say multiple times the max e2e query timeout, including list operation times). This is why it's important to insert infrequently and in large batches, to prevent too many files from building up before they can be deleted.
 
