@@ -111,6 +111,7 @@ class FileMarker:
         self.createdMS = createdMS
         self.fileBytes = fileBytes
         self.tombstone = tombstone
+        self.vir_source_log_file = None
 
     def toJSON(self) -> str:
         d = {
