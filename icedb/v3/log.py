@@ -283,8 +283,7 @@ class IceLogIO:
             raise NoLogFilesException
 
         # Filter out files that are too old
-        ex = get_log_file_time(s3_files[0]['Key'])
-        s3_files = list(filter(lambda x: get_log_file_time(x['Key'])[0] < timestamp, s3_files))
+        s3_files = list(filter(lambda x: get_log_file_time(x['Key']) < timestamp, s3_files))
 
         if len(s3_files) == 0:
             raise NoLogFilesException
@@ -293,59 +292,7 @@ class IceLogIO:
         schema, file_markers, log_tombstones = self.read_log_forward(s3client, log_files)
         return schema, file_markers, log_tombstones, log_files
 
-    def reverse_read(self, s3client: S3Client, max_ts_ms: int = None) -> tuple[Schema, list[FileMarker],
-    list[LogTombstone], list[str]]:
-        """
-        DEPRECATED! Reads the current state
-        """
-        if max_ts_ms is None:
-            max_ts_ms = round(time() * 1000)
-
-        s3_files: list[dict] = []
-        no_more_files = False
-        continuation_token = ""
-        while not no_more_files:
-            res = s3client.s3.list_objects_v2(
-                Bucket=s3client.s3bucket,
-                MaxKeys=1000,
-                Prefix='/'.join([s3client.s3prefix, '_log'])
-            ) if continuation_token != "" else s3client.s3.list_objects_v2(
-                Bucket=s3client.s3bucket,
-                MaxKeys=1000,
-                Prefix='/'.join([s3client.s3prefix, '_log'])
-            )
-            s3_files += res['Contents']
-            no_more_files = not res['IsTruncated']
-            if not no_more_files:
-                continuation_token = res['NextContinuationToken']
-
-        merge_ts: int | None = None
-        s3_files = sorted(s3_files, key=lambda x: x['Key'], reverse=True)
-        relevant_log_files: list[str] = []
-        for file in s3_files:
-            file_name = file['Key'].split("/")[-1]
-            us_parts = file_name.split("_")
-            # Get timestamp and merge timestamp
-            file_ts = int(us_parts[0])
-            if file_ts > max_ts_ms:
-                continue
-            if merge_ts is not None and file_ts <= merge_ts:
-                print("we hit a file older than the merge, aborting")
-                break
-            if us_parts[1] == "merged" and len(us_parts) > 3:
-                print("found a merge file", file_name)
-                # We found a merge file
-                merge_ts = int(us_parts[2])
-            relevant_log_files.append(file['Key'])
-
-        if len(relevant_log_files) == 0:
-            raise NoLogFilesException
-
-        # Now parse files forward like normal reader (ascending)
-        schema, file_markers, log_tombstones = self.read_log_forward(s3client, relevant_log_files)
-        return schema, file_markers, log_tombstones, relevant_log_files
-
-    def append(self, s3client: S3Client, version: int, schema: Schema, files: list[FileMarker], tombstones: list[LogTombstone] = None, merge_ts: int = None) -> tuple[str, LogMetadata]:
+    def append(self, s3client: S3Client, version: int, schema: Schema, files: list[FileMarker], tombstones: list[LogTombstone] = None) -> tuple[str, LogMetadata]:
         """
         Creates a new log file in S3, in the order of version, schema, tombstones?, files
         """
@@ -359,10 +306,7 @@ class IceLogIO:
         for fileMarker in files:
             log_file_lines.append(fileMarker.json())
 
-        file_id = f"{meta.timestamp}"
-        if merge_ts is not None:
-            file_id += f"_merge_{merge_ts}"
-        file_id += f"_{self.path_safe_hostname}"
+        file_id = f"{meta.timestamp}_{self.path_safe_hostname}"
 
         # Upload the file to S3
         file_key = "/".join([s3client.s3prefix, '_log', file_id+'.jsonl'])
@@ -373,7 +317,7 @@ class IceLogIO:
         )
         return file_key, meta
 
-def get_log_file_time(file_name: str) -> tuple[int, int | None]:
+def get_log_file_time(file_name: str) -> int:
     """
     Returns the timestamp of the file, and optionally the merge timestamp if it exists
     """
@@ -381,9 +325,4 @@ def get_log_file_time(file_name: str) -> tuple[int, int | None]:
     us_parts = file_name.split("_")
     # Get timestamp and merge timestamp
     file_ts = int(us_parts[0])
-    merge_ts: int | None = None
-    if us_parts[1] == "merged" and len(us_parts) > 3:
-        print("found a merge file", file_name)
-        # We found a merge file
-        merge_ts = int(us_parts[2])
-    return file_ts, merge_ts
+    return file_ts
