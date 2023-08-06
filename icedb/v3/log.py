@@ -276,7 +276,8 @@ class IceLogIO:
             res = s3client.s3.list_objects_v2(
                 Bucket=s3client.s3bucket,
                 MaxKeys=1000,
-                Prefix='/'.join([s3client.s3prefix, '_log'])
+                Prefix='/'.join([s3client.s3prefix, '_log']),
+                ContinuationToken=continuation_token
             ) if continuation_token != "" else s3client.s3.list_objects_v2(
                 Bucket=s3client.s3bucket,
                 MaxKeys=1000,

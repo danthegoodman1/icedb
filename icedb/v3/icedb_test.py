@@ -3,6 +3,7 @@ from log import S3Client, IceLogIO, SchemaConflictException
 from datetime import datetime
 import json
 from time import time
+import sys
 
 s3c = S3Client(s3prefix="tenant", s3bucket="testbucket", s3region="us-east-1", s3endpoint="http://localhost:9000",
                s3accesskey="user", s3secretkey="password")
@@ -193,7 +194,6 @@ try:
 
     print('results validated')
 
-    # ================== Merge =========================
     print("============== merging results ==============")
 
     previous_logs = l1
@@ -302,6 +302,85 @@ try:
 
     print('results validated')
 
+    print("============== insert thousands ==============")
+    print("this will take a while...")
+
+    s = time()
+    for i in range(2000):
+        ice.insert(example_events)
+        sys.stdout.write(f"\rinserted {i}")
+        sys.stdout.flush()
+    print("inserted thousands in", time() - s)
+
+    print("reading in the state")
+    s = time()
+    s1, f1, t1, l1 = log.read_at_max_time(s3c, round(time() * 1000))
+    print("read thousands in", time()-s)
+
+    print("files", len(f1), "logs", len(l1))
+    assert len(l1) == 2002
+    assert len(f1) == 4005
+
+    print("verify expected results")
+    s = time()
+    alive_files = list(filter(lambda x: x.tombstone is None, f1))
+    query = "select count(user_id), user_id from read_parquet([{}]) group by user_id order by count(user_id) desc".format(
+        ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
+    )
+    # THIS IS A BAD IDEA NEVER DO THIS IN PRODUCTION
+    ice.ddb.execute(query)
+    res = ice.ddb.fetchall()
+    print(res, "in", time()-s)
+
+    assert res[0][0] == 4005
+    assert res[1][0] == 2003
+
+    print("merging it")
+    s = time()
+    l1, new_file, partition, merged_files, meta = ice.merge(max_file_count=2000, max_file_size=1_000_000_000)
+    print(f"merged {len(l1)} in", time()-s)
+
+    s = time()
+    s1, f1, t1, l1 = log.read_at_max_time(s3c, round(time() * 1000))
+    print("read post merge state in", time() - s)
+
+    print("files", len(f1), "logs", len(l1))
+    assert len(l1) == 2003
+    assert len(f1) == 4006
+
+    print("verify expected results")
+    s = time()
+    alive_files = list(filter(lambda x: x.tombstone is None, f1))
+    query = "select count(user_id), user_id from read_parquet([{}]) group by user_id order by count(user_id) desc".format(
+        ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
+    )
+    # THIS IS A BAD IDEA NEVER DO THIS IN PRODUCTION
+    ice.ddb.execute(query)
+    res = ice.ddb.fetchall()
+    print(res, "in", time() - s)
+
+    assert res[0][0] == 4005
+    assert res[1][0] == 2003
+
+    print("tombstone clean it")
+    s = time()
+    cleaned_log_files, deleted_log_files, deleted_data_files = ice.tombstone_cleanup(0)
+    print(f"tombstone cleaned {len(cleaned_log_files)} cleaned log files, {len(deleted_log_files)} deleted log files, {len(deleted_data_files)} data files in", time()-s)
+
+    print("verify expected results")
+    s = time()
+    alive_files = list(filter(lambda x: x.tombstone is None, f1))
+    query = "select count(user_id), user_id from read_parquet([{}]) group by user_id order by count(user_id) desc".format(
+        ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
+    )
+    # THIS IS A BAD IDEA NEVER DO THIS IN PRODUCTION
+    ice.ddb.execute(query)
+    res = ice.ddb.fetchall()
+    print(res, "in", time() - s)
+
+    assert res[0][0] == 4005
+    assert res[1][0] == 2003
+
     print("============= insert conflicting types ==================")
     conflicting_out = ice.insert([{
         "ts": 1686176939445,
@@ -335,15 +414,27 @@ finally:
     # ================== Clean up =========================
     clean = True
     if clean:
-        logFiles = s3c.s3.list_objects_v2(
-            Bucket=s3c.s3bucket,
-            MaxKeys=1000,
-            Prefix=s3c.s3prefix
-        )
-        for file in logFiles['Contents']:
-            key = file['Key']
-            print('deleting', key)
+        s3_files: list[dict] = []
+        no_more_files = False
+        continuation_token = ""
+        while not no_more_files:
+            res = s3c.s3.list_objects_v2(
+                Bucket=s3c.s3bucket,
+                MaxKeys=1000,
+                Prefix='/'.join([s3c.s3prefix, '_log']),
+                ContinuationToken=continuation_token
+            ) if continuation_token != "" else s3c.s3.list_objects_v2(
+                Bucket=s3c.s3bucket,
+                MaxKeys=1000,
+                Prefix='/'.join([s3c.s3prefix, '_log'])
+            )
+            s3_files += res['Contents']
+            no_more_files = not res['IsTruncated']
+            if not no_more_files:
+                continuation_token = res['NextContinuationToken']
+        for file in s3_files:
             s3c.s3.delete_object(
                 Bucket=s3c.s3bucket,
-                Key=key
+                Key=file['Key']
             )
+        print(f"deleted {len(s3_files)} files")
