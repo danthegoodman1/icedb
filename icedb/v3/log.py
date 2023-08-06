@@ -154,16 +154,14 @@ class LogMetadata:
     schemaLineIndex: int
     fileLineIndex: int
     tombstoneLineIndex: int | None
-    merged_ts: int | None
     timestamp: int
 
-    def __init__(self, version: int, schemaLineIndex: int, fileLineIndex: int, tombstoneLineIndex: int = None, merged_ts: int = None):
+    def __init__(self, version: int, schemaLineIndex: int, fileLineIndex: int, tombstoneLineIndex: int = None):
         self.version = version
         self.schemaLineIndex = schemaLineIndex
         self.fileLineIndex = fileLineIndex
         self.tombstoneLineIndex = tombstoneLineIndex
         self.timestamp = round(time()*1000)
-        self.merged_ts = merged_ts
 
     def toJSON(self) -> str:
         d = {
@@ -176,9 +174,6 @@ class LogMetadata:
         if self.tombstoneLineIndex is not None:
             d["tmb"] = self.tombstoneLineIndex
 
-        if self.merged_ts is not None:
-            d["m"] = self.merged_ts
-
         return json.dumps(d)
 
     def __str__(self):
@@ -189,7 +184,7 @@ class LogMetadata:
 
 
 def LogMetadataFromJSON(jsonl: dict):
-    lm = LogMetadata(jsonl["v"], jsonl["sch"], jsonl["f"], jsonl["tmb"] if "tmb" in jsonl else None, jsonl["m"] if "m" in jsonl else None)
+    lm = LogMetadata(jsonl["v"], jsonl["sch"], jsonl["f"], jsonl["tmb"] if "tmb" in jsonl else None)
     lm.timestamp = jsonl["t"]
     return lm
 

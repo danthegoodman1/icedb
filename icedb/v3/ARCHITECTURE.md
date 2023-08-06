@@ -72,7 +72,7 @@ To get a snapshot-consistent view of the database, a reader must perform the fol
 3. Read each found log file sequentially (they are sorted by time), removing known data parts as file markers are found with tombstone references, and accumulating the current schema (handling schema conflicts if found)
 4. Return the final list of active files and accumulated schema
 
-The timestamp is important as listed files created after the timestamp must be ignored, and any pagination could cause inconsistent view of the data.
+The timestamp is important as listed files created after the timestamp must be ignored, as any pagination could cause inconsistent view of the data.
 
 ## Merging
 
