@@ -212,6 +212,31 @@ try:
 
     print('results validated')
 
+    print("============= read log backward ==================")
+    # insert again to get a file after the merge
+    ice.insert(example_events)
+
+    s1, f1, t1, l1 = log.reverse_read(s3c)
+    print("=== Current State (reverse) ===")
+    print("schema:", s1)
+    print("files:", f1)
+    print("tombstones:", t1)
+    print("log files:", l1)
+    alive_files = list(filter(lambda x: x.tombstone is None, f1))
+
+    query = "select count(user_id), user_id from read_parquet([{}]) group by user_id order by count(user_id) desc".format(
+        ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
+    )
+    print('executing query:', query)
+    # THIS IS A BAD IDEA NEVER DO THIS IN PRODUCTION
+    ice.ddb.execute(query)
+    res = ice.ddb.fetchall()
+    print(res)
+
+    assert res[0][0] == 6
+    assert res[1][0] == 3
+
+
     print("============= insert conflicting types ==================")
     conflicting_out = ice.insert([{
         "ts": 1686176939445,

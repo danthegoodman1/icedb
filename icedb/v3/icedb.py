@@ -18,7 +18,7 @@ class IceDBv3:
     unique_row_key: str | None
     custom_merge_query: str | None
     row_group_size: int
-    file_safe_hostname: str
+    path_safe_hostname: str
 
     def __init__(
             self,
@@ -30,7 +30,7 @@ class IceDBv3:
             s3_secret_key: str,
             s3_endpoint: str,
             s3_client: S3Client,
-            file_safe_hostname: str,
+            path_safe_hostname: str,
             s3_use_path: bool = False,
             duckdb_ext_dir: str = None,
             custom_merge_query: str = None,
@@ -41,7 +41,7 @@ class IceDBv3:
         self.sort_order = sort_order
         self.format_row = format_row
         self.row_group_size = row_group_size
-        self.file_safe_hostname = file_safe_hostname
+        self.path_safe_hostname = path_safe_hostname
         self.unique_row_key = unique_row_key
         self.s3c = s3_client
         self.custom_merge_query = custom_merge_query
@@ -116,7 +116,7 @@ class IceDBv3:
             file_markers.append(FileMarker(fullpath, round(time() * 1000), obj['ContentLength']))
 
         # Append to log
-        logio = IceLogIO(self.file_safe_hostname)
+        logio = IceLogIO(self.path_safe_hostname)
         log_path, log_meta = logio.append(self.s3c, 1, running_schema, file_markers)
 
         return file_markers
@@ -130,7 +130,7 @@ class IceDBv3:
 
         Returns the number of files merged.
         """
-        logio = IceLogIO(self.file_safe_hostname)
+        logio = IceLogIO(self.path_safe_hostname)
         cur_schema, cur_files, cur_tombstones, all_log_files = logio.read_at_max_time(self.s3c, round(time() * 1000))
 
         # Group by partition
@@ -209,7 +209,8 @@ class IceDBv3:
                     updated_markers + [
                         new_file_marker
                     ],
-                    cur_tombstones + new_tombstones
+                    cur_tombstones + new_tombstones,
+                    merge_ts=int(all_log_files[-1].split("/")[-1].split("_")[0])
                 )
 
                 return new_log, new_file_marker, partition, acc_file_markers, meta
