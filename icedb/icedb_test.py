@@ -1,4 +1,4 @@
-from icedb import IceDBv3
+from icedb.icedb import IceDBv3
 from log import S3Client, IceLogIO, SchemaConflictException
 from datetime import datetime
 import json
