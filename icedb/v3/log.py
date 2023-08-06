@@ -209,16 +209,16 @@ class IceLogIO:
     def __init__(self, path_safe_hostname: str):
         self.path_safe_hostname = path_safe_hostname
 
-    def __read_log_forward(self, s3client: S3Client, s3_files: list[str]) -> tuple[Schema, list[FileMarker],
+    def read_log_forward(self, s3client: S3Client, s3_files: list[str]) -> tuple[Schema, list[FileMarker],
     list[LogTombstone]]:
         """
-        Reads the current state of the log for a given set of files
+        Reads the current state of the log for a given set of files, not meant to be used externally.
         """
         total_schema = Schema()
         file_markers: Dict[str, FileMarker] = {}
         tombstones: Dict[str, LogTombstone] = {}
         log_files: list[str] = []
-        # sanity just make sure they are sorted
+        # ensure they are sorted
         s3_files = sorted(s3_files)
 
         for file in s3_files:
@@ -290,7 +290,7 @@ class IceLogIO:
             raise NoLogFilesException
 
         log_files = list(map(lambda x: x['Key'], s3_files))
-        schema, file_markers, log_tombstones = self.__read_log_forward(s3client, log_files)
+        schema, file_markers, log_tombstones = self.read_log_forward(s3client, log_files)
         return schema, file_markers, log_tombstones, log_files
 
     def reverse_read(self, s3client: S3Client, max_ts_ms: int = None) -> tuple[Schema, list[FileMarker],
@@ -342,7 +342,7 @@ class IceLogIO:
             raise NoLogFilesException
 
         # Now parse files forward like normal reader (ascending)
-        schema, file_markers, log_tombstones = self.__read_log_forward(s3client, relevant_log_files)
+        schema, file_markers, log_tombstones = self.read_log_forward(s3client, relevant_log_files)
         return schema, file_markers, log_tombstones, relevant_log_files
 
     def append(self, s3client: S3Client, version: int, schema: Schema, files: list[FileMarker], tombstones: list[LogTombstone] = None, merge_ts: int = None) -> tuple[str, LogMetadata]:
