@@ -106,7 +106,7 @@ class FileMarker:
     # Only used for reading state, not included in serialization
     vir_source_log_file: str | None
 
-    def __init__(self, path: str, createdMS: int, fileBytes: int, tombstone: int | None = None):
+    def __init__(self, path: str, createdMS: int, fileBytes: int, tombstone: int = None):
         self.path = path
         self.createdMS = createdMS
         self.fileBytes = fileBytes
@@ -141,6 +141,10 @@ class FileMarker:
         else:
             return self.json()
 
+def FileMarkerFromJSON(jsonl: dict):
+    fm = FileMarker(jsonl["p"], int(jsonl["t"]), int(jsonl["b"]),
+                    jsonl["tmb"] if "tmb" in jsonl else None)
+    return fm
 
 class LogTombstone:
     path: str
@@ -162,6 +166,10 @@ class LogTombstone:
     def __repr__(self):
         return self.toJSON()
 
+def LogTombstoneFromJSON(jsonl: dict):
+    lt = LogTombstone(jsonl["p"], jsonl["t"])
+    return lt
+
 
 class LogMetadata:
     version: int
@@ -170,12 +178,13 @@ class LogMetadata:
     tombstoneLineIndex: int | None
     timestamp: int
 
-    def __init__(self, version: int, schemaLineIndex: int, fileLineIndex: int, tombstoneLineIndex: int = None):
+    def __init__(self, version: int, schemaLineIndex: int, fileLineIndex: int, tombstoneLineIndex: int = None,
+                 timestamp: int = None):
         self.version = version
         self.schemaLineIndex = schemaLineIndex
         self.fileLineIndex = fileLineIndex
         self.tombstoneLineIndex = tombstoneLineIndex
-        self.timestamp = round(time()*1000)
+        self.timestamp = timestamp if timestamp is not None else round(time()*1000)
 
     def toJSON(self) -> str:
         d = {
@@ -256,10 +265,9 @@ class IceLogIO:
 
         return total_schema, list(file_markers.values()), list(tombstones.values())
 
-    def read_at_max_time(self, s3client: S3Client, timestamp: int) -> tuple[Schema, list[FileMarker],
-    list[LogTombstone], list[str]]:
+    def get_current_log_files(self, s3client: S3Client) -> list[dict]:
         """
-        Read the current state of the log up to a given timestamp
+        Returns the list of known log files as S3 object dictionaries
         """
         s3_files: list[dict] = []
         no_more_files = False
@@ -282,8 +290,17 @@ class IceLogIO:
         if len(s3_files) == 0:
             raise NoLogFilesException
 
+        return s3_files
+
+    def read_at_max_time(self, s3client: S3Client, timestamp: int) -> tuple[Schema, list[FileMarker],
+    list[LogTombstone], list[str]]:
+        """
+        Read the current state of the log up to a given timestamp
+        """
+        s3_files = self.get_current_log_files(s3client)
+
         # Filter out files that are too old
-        s3_files = list(filter(lambda x: get_log_file_time(x['Key']) < timestamp, s3_files))
+        s3_files = list(filter(lambda x: get_log_file_info(x['Key'])[0] < timestamp, s3_files))
 
         if len(s3_files) == 0:
             raise NoLogFilesException
@@ -292,12 +309,14 @@ class IceLogIO:
         schema, file_markers, log_tombstones = self.read_log_forward(s3client, log_files)
         return schema, file_markers, log_tombstones, log_files
 
-    def append(self, s3client: S3Client, version: int, schema: Schema, files: list[FileMarker], tombstones: list[LogTombstone] = None) -> tuple[str, LogMetadata]:
+    def append(self, s3client: S3Client, version: int, schema: Schema, files: list[FileMarker], tombstones: list[
+        LogTombstone] = None, merged = False, timestamp: int = None) -> tuple[str, LogMetadata]:
         """
         Creates a new log file in S3, in the order of version, schema, tombstones?, files
         """
         log_file_lines: list[str] = []
-        meta = LogMetadata(version, 1, 2 if tombstones is None or len(tombstones) == 0 else 2+len(tombstones), None if tombstones is None or len(tombstones) == 0 else 2)
+        meta = LogMetadata(version, 1, 2 if tombstones is None or len(tombstones) == 0 else 2+len(tombstones),
+                           None if tombstones is None or len(tombstones) == 0 else 2, timestamp=timestamp)
         log_file_lines.append(meta.toJSON())
         log_file_lines.append(schema.toJSON())
         if tombstones is not None:
@@ -306,7 +325,10 @@ class IceLogIO:
         for fileMarker in files:
             log_file_lines.append(fileMarker.json())
 
-        file_id = f"{meta.timestamp}_{self.path_safe_hostname}"
+        file_id = f"{meta.timestamp}"
+        if merged:
+            file_id += "_m"
+        file_id += f"_{self.path_safe_hostname}"
 
         # Upload the file to S3
         file_key = "/".join([s3client.s3prefix, '_log', file_id+'.jsonl'])
@@ -317,12 +339,15 @@ class IceLogIO:
         )
         return file_key, meta
 
-def get_log_file_time(file_name: str) -> int:
+def get_log_file_info(file_name: str) -> tuple[int, bool]:
     """
     Returns the timestamp of the file, and optionally the merge timestamp if it exists
     """
     file_name = file_name.split("/")[-1]
-    us_parts = file_name.split("_")
-    # Get timestamp and merge timestamp
-    file_ts = int(us_parts[0])
-    return file_ts
+    name_parts = file_name.split("_")
+    # Get timestamp and merge
+    file_ts = int(name_parts[0])
+    merged = False
+    if len(name_parts) > 2 and name_parts[1] == "m":
+        merged = True
+    return file_ts, merged

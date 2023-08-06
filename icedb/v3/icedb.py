@@ -2,8 +2,10 @@ from typing import List, Callable, Dict
 import duckdb
 from uuid import uuid4
 import pandas as pd
-from log import IceLogIO, Schema, LogMetadata, S3Client, FileMarker, LogTombstone, get_log_file_time
+from log import (IceLogIO, Schema, LogMetadata, S3Client, FileMarker, LogTombstone, get_log_file_info,
+                 LogMetadataFromJSON, LogTombstoneFromJSON, FileMarkerFromJSON)
 from time import time
+import json
 
 PartitionFunctionType = Callable[[dict], str]
 FormatRowType = Callable[[dict], dict]
@@ -161,7 +163,6 @@ class IceDBv3:
                 acc_file_markers.append(file_marker)
                 if acc_bytes >= max_file_size or len(acc_file_markers) > 1 and len(acc_file_markers) >= max_file_count:
                     # then we merge
-                    print("-----------------hit max statement, exiting")
                     break
             if len(acc_file_markers) > 1:
                 # merge data parts
@@ -204,7 +205,8 @@ class IceDBv3:
                     x.createdMS,
                     x.fileBytes,
                     merged_time if x.path in acc_file_paths else x.tombstone),
-                                           file_markers))
+                                           m_file_markers))
+
 
                 new_tombstones = list(map(lambda x: LogTombstone(x, merged_time),
                                           merged_log_files))
@@ -212,11 +214,12 @@ class IceDBv3:
                 new_log, meta = logio.append(
                     self.s3c,
                     1,
-                    cur_schema,
+                    m_schema,
                     updated_markers + [
                         new_file_marker
                     ],
-                    m_tombstones + new_tombstones
+                    m_tombstones + new_tombstones,
+                    merged=True
                 )
 
                 return new_log, new_file_marker, partition, acc_file_markers, meta
@@ -224,15 +227,81 @@ class IceDBv3:
         # otherwise we did not merge
         return None, None, None, None, None
 
-    def get_files(self, gte_part: str, lte_part: str) -> List[str]:
-        pass
-
-    def tombstone_cleanup(self, min_age_ms: int, partition_prefix: str = None, limit=10) -> str:
+    def tombstone_cleanup(self, min_age_ms: int) -> tuple[list[str], list[str], list[str]]:
         """
         Removes parquet files that are no longer active, and are older than some age. Returns the number of files deleted.
 
         For performance, icedb will optimistically delete files from S3, meaning that if a crash occurs during the middle of a removal then files may be left in S3 even though they are seen as deleted in the DB.
 
-        The best mitigation for this is multiple small removal operations.
+        Returns the list of log files that were cleaned, log files that were deleted, and data files that
+        were deleted
         """
-        pass
+        logio = IceLogIO(self.path_safe_hostname)
+        cleaned_log_files: list[str] = []
+        deleted_log_files: list[str] = []
+        deleted_data_files: list[str] = []
+        now = round(time() * 1000)
+
+        current_log_files = logio.get_current_log_files(self.s3c)
+        # We only need to get merge files
+        merge_log_files = list(filter(lambda x: get_log_file_info(x['Key'])[1], current_log_files))
+        for file in merge_log_files:
+            obj = self.s3c.s3.get_object(
+                Bucket=self.s3c.s3bucket,
+                Key=file['Key']
+            )
+            jsonl = str(obj['Body'].read(), encoding="utf-8").split("\n")
+            meta_json = json.loads(jsonl[0])
+            meta = LogMetadataFromJSON(meta_json)
+
+            # Log tombstones
+            log_files_to_delete: list[str] = []
+            if meta.tombstoneLineIndex is not None:
+                for i in range(meta.tombstoneLineIndex, meta.fileLineIndex):
+                    tmb = LogTombstoneFromJSON(dict(json.loads(jsonl[i])))
+                    if tmb.createdMS <= now - min_age_ms:
+                        log_files_to_delete.append(tmb.path)
+
+            # File markers
+            file_markers: list[FileMarker] = []
+            for i in range(meta.fileLineIndex, len(jsonl)):
+                fm_json = dict(json.loads(jsonl[i]))
+                fm = FileMarkerFromJSON(fm_json)
+                file_markers.append(fm)
+
+            # Delete log tombstones
+            for log_path in log_files_to_delete:
+                # TODO: catch not found error
+                self.s3c.s3.delete_object(
+                    Bucket=self.s3c.s3bucket,
+                    Key=log_path  # + "e" # testing to catch not found error
+                )
+
+            # Delete data tombstones
+            file_markers_to_delete: list[FileMarker] = list(filter(lambda x: x.createdMS <= now - min_age_ms and
+                                                                             x.tombstone is not None, file_markers))
+            for data_path in file_markers_to_delete:
+                # TODO: catch not found error
+                self.s3c.s3.delete_object(
+                    Bucket=self.s3c.s3bucket,
+                    Key=data_path.path  # + "e" # testing to catch not found error
+                )
+
+            # Upsert log file
+            schema = Schema()
+            schema_json = dict(json.loads(jsonl[meta.schemaLineIndex]))
+            schema.accumulate(list(schema_json.keys()), list(schema_json.values()))
+            new_log, _ = logio.append(
+                self.s3c,
+                1,
+                schema,
+                list(filter(lambda x: x.tombstone is None or x.createdMS > now - min_age_ms, file_markers)),
+                None,
+                merged=True,
+                timestamp=meta.timestamp
+            )
+            cleaned_log_files.append(file['Key'])
+            deleted_log_files += log_files_to_delete
+            deleted_data_files += list(map(lambda x: x.path, file_markers_to_delete))
+
+        return cleaned_log_files, deleted_log_files, deleted_data_files

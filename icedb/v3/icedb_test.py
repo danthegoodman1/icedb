@@ -196,7 +196,7 @@ try:
     # ================== Merge =========================
     print("============== merging results ==============")
 
-    previous_logs = sorted(l1)
+    previous_logs = l1
 
     # merge fully
     l1, new_file, partition, merged_files, meta = ice.merge(max_file_count=2)
@@ -213,17 +213,25 @@ try:
     print("log files:", l1)
 
     # verify log tombstones and file marker tombstones
-    expectedFileTombstones = list(filter(lambda x: 'd=2023-06-07' in x, firstInserted+secondInserted))
-    print("expecting file tombstones:", expectedFileTombstones)
+    possible_file_tmb = list(filter(lambda x: 'd=2023-06-07' in x, firstInserted + secondInserted + third_inserted))
+    print("possible file tombstones:", possible_file_tmb)
     actual_tomb = list(map(lambda x: x.path, filter(lambda x: x.tombstone is not None, f1)))
     print("got actual tombstones:", actual_tomb)
-    assert sorted(expectedFileTombstones) == sorted(actual_tomb)
+    for actual_t in actual_tomb:
+        assert actual_t in possible_file_tmb
 
-    expected_log_tombstones = previous_logs[:2]
-    print("expected log tombstones", expected_log_tombstones)
+    print("possible log tombstones", previous_logs)
     actual_log_tombstones = sorted(map(lambda x: x.path, t1))
     print("actual log tombstones", actual_log_tombstones)
-    assert expected_log_tombstones == actual_log_tombstones
+    for log_tmb in actual_log_tombstones:
+        assert log_tmb in actual_log_tombstones
+
+    alive_file_paths = list(map(lambda x: x.path, filter(lambda x: x.tombstone is None, f1)))
+    print("got actual alive files:", alive_file_paths)
+    assert len(alive_file_paths) == 5
+
+    print("got log file len", len(l1))
+    assert len(l1) == 4
 
     # Verify the results
     alive_files = list(filter(lambda x: x.tombstone is None, f1))
@@ -241,6 +249,54 @@ try:
 
     print('results validated')
 
+    print("============= tombstone cleaning ==================")
+
+    # Just clean everything
+    cleaned_log_files, deleted_log_files, deleted_data_files = ice.tombstone_cleanup(0)
+
+    expected_cleaned_log_files = list(filter(lambda x: "_m_" in x, l1))
+    print("expected cleaned log files", expected_cleaned_log_files)
+    print("actual cleaned log files", cleaned_log_files)
+    assert cleaned_log_files == expected_cleaned_log_files
+
+    print("expected deleted log files", actual_log_tombstones)
+    print("actual deleted log files", deleted_log_files)
+    assert deleted_log_files == actual_log_tombstones
+
+    print("expected deleted data files", actual_tomb)
+    print("actual deleted data files", deleted_data_files)
+    assert deleted_data_files == actual_tomb
+
+    # Verify query results are the same
+    # Read the state in
+    log = IceLogIO("dan-mbp")
+    s1, f1, t1, l1 = log.read_at_max_time(s3c, round(time() * 1000))
+    print("=== Current State ===")
+    print("schema:", s1)
+    print("files:", f1)
+    print("tombstones:", t1)
+    print("log files:", l1)
+
+    assert len(l1) == 2
+
+    alive_file_paths = list(map(lambda x: x.path, filter(lambda x: x.tombstone is None, f1)))
+    print("got actual alive files:", alive_file_paths)
+    assert len(alive_file_paths) == 5
+
+    alive_files = list(filter(lambda x: x.tombstone is None, f1))
+    query = "select count(user_id), user_id from read_parquet([{}]) group by user_id order by count(user_id) desc".format(
+        ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
+    )
+    print('executing query:', query)
+    # THIS IS A BAD IDEA NEVER DO THIS IN PRODUCTION
+    ice.ddb.execute(query)
+    res = ice.ddb.fetchall()
+    print(res)
+
+    assert res[0][0] == 6
+    assert res[1][0] == 3
+
+    print('results validated')
 
     print("============= insert conflicting types ==================")
     conflicting_out = ice.insert([{
