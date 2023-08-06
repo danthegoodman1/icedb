@@ -196,10 +196,13 @@ class IceLogIO:
         self.path_safe_hostname = path_safe_hostname
 
     @staticmethod
-    def reverse_read(s3client: S3Client) -> tuple[Schema, list[FileMarker], list[LogTombstone], list[str]]:
+    def reverse_read(s3client: S3Client, max_ts_ms: int = None) -> tuple[Schema, list[FileMarker], list[LogTombstone], list[str]]:
         """
         Reads the current state
         """
+        if max_ts_ms is None:
+            max_ts_ms = round(time() * 1000)
+
         s3_files: list[dict] = []
         no_more_files = False
         continuation_token = ""
@@ -226,6 +229,8 @@ class IceLogIO:
             us_parts = file_name.split("_")
             # Get timestamp and merge timestamp
             file_ts = int(us_parts[0])
+            if file_ts > max_ts_ms:
+                continue
             if merge_ts is not None and file_ts <= merge_ts:
                 print("we hit a file older than the merge, aborting")
                 break

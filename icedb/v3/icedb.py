@@ -131,7 +131,7 @@ class IceDBv3:
         Returns the number of files merged.
         """
         logio = IceLogIO(self.path_safe_hostname)
-        cur_schema, cur_files, cur_tombstones, all_log_files = logio.read_at_max_time(self.s3c, round(time() * 1000))
+        cur_schema, cur_files, cur_tombstones, all_log_files = logio.reverse_read(self.s3c, round(time() * 1000))
 
         # Group by partition
         partitions: Dict[str, list[FileMarker]] = {}
