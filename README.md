@@ -95,7 +95,7 @@ Some notes:
    state!)
 2. Merging happens very quick
 3. Tombstone cleaning happens super quick as well
-4. Despite having 1000x times more files to read, DuckDB can perform aggregations only twice as slow!
+4. DuckDB performs surprisingly well with so many files (albeit they are one or two rows each)
 5. At hundreds of log files and partitions (where most tables should live at), performance was exceptional
 6. Going from hundreds to thousands, performance is nearly perfectly linear, sometimes even super linear (merges)!
 
