@@ -159,6 +159,8 @@ class IceDBv3:
             acc_bytes = 0
             acc_file_markers: list[FileMarker] = []
             for file_marker in sorted_file_markers:
+                if file_marker.tombstone is not None:
+                    continue
                 acc_bytes += file_marker.fileBytes
                 acc_file_markers.append(file_marker)
                 if acc_bytes >= max_file_size or len(acc_file_markers) > 1 and len(acc_file_markers) >= max_file_count:
@@ -225,7 +227,7 @@ class IceDBv3:
                 return new_log, new_file_marker, partition, acc_file_markers, meta
 
         # otherwise we did not merge
-        return None, None, None, None, None
+        return None, None, None, [], None
 
     def tombstone_cleanup(self, min_age_ms: int) -> tuple[list[str], list[str], list[str]]:
         """

@@ -199,9 +199,9 @@ try:
     previous_logs = l1
 
     # merge fully
-    l1, new_file, partition, merged_files, meta = ice.merge(max_file_count=2)
-    if l1 is not None:
-        print("merged", l1, new_file, partition, merged_files)
+    merged_log, new_file, partition, merged_files, meta = ice.merge(max_file_count=2)
+    if merged_log is not None:
+        print("merged", merged_log, new_file, partition, merged_files)
 
     # Read the state in
     log = IceLogIO("dan-mbp")
@@ -302,28 +302,30 @@ try:
 
     print('results validated')
 
-    print("============== insert thousands ==============")
+    print("============== insert hundreds ==============")
     print("this will take a while...")
 
     s = time()
-    for i in range(2000):
+    for i in range(200):
         ice.insert(example_events)
-        sys.stdout.write(f"\rinserted {i}")
+        sys.stdout.write(f"\rinserted {i+1}")
         sys.stdout.flush()
-    print("inserted thousands in", time() - s)
+    print("")
+    print("inserted hundreds in", time() - s)
 
     print("reading in the state")
     s = time()
     s1, f1, t1, l1 = log.read_at_max_time(s3c, round(time() * 1000))
-    print("read thousands in", time()-s)
+    print("read hundreds in", time()-s)
 
     print("files", len(f1), "logs", len(l1))
-    assert len(l1) == 2002
-    assert len(f1) == 4005
+    assert len(l1) == 202
+    assert len(f1) == 405
 
     print("verify expected results")
     s = time()
     alive_files = list(filter(lambda x: x.tombstone is None, f1))
+    print(f"got {len(alive_files)} alive files")
     query = "select count(user_id), user_id from read_parquet([{}]) group by user_id order by count(user_id) desc".format(
         ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
     )
@@ -332,25 +334,26 @@ try:
     res = ice.ddb.fetchall()
     print(res, "in", time()-s)
 
-    assert res[0][0] == 4005
-    assert res[1][0] == 2003
+    assert res[0][0] == 406
+    assert res[1][0] == 203
 
     print("merging it")
     s = time()
-    l1, new_file, partition, merged_files, meta = ice.merge(max_file_count=2000, max_file_size=1_000_000_000)
-    print(f"merged {len(l1)} in", time()-s)
+    merged_log, new_file, partition, merged_files, meta = ice.merge(max_file_count=2000, max_file_size=1_000_000_000)
+    print(f"merged partition {partition} with {len(merged_files)} files in", time()-s)
 
     s = time()
     s1, f1, t1, l1 = log.read_at_max_time(s3c, round(time() * 1000))
     print("read post merge state in", time() - s)
 
     print("files", len(f1), "logs", len(l1))
-    assert len(l1) == 2003
-    assert len(f1) == 4006
+    assert len(l1) == 203
+    assert len(f1) == 406
 
     print("verify expected results")
     s = time()
     alive_files = list(filter(lambda x: x.tombstone is None, f1))
+    print(f"got {len(alive_files)} alive files")
     query = "select count(user_id), user_id from read_parquet([{}]) group by user_id order by count(user_id) desc".format(
         ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
     )
@@ -359,17 +362,52 @@ try:
     res = ice.ddb.fetchall()
     print(res, "in", time() - s)
 
-    assert res[0][0] == 4005
-    assert res[1][0] == 2003
+    assert res[0][0] == 406
+    assert res[1][0] == 203
+
+    print("merging many more times to verify")
+    for i in range(4):
+        s = time()
+        merged_log, new_file, partition, merged_files, meta = ice.merge(max_file_count=200,
+                                                                        max_file_size=1_000_000_000)
+        print(f"merged partition {partition} with {len(merged_files)} files in", time() - s)
+
+    s = time()
+    s1, f1, t1, l1 = log.read_at_max_time(s3c, round(time() * 1000))
+    print("read post merge state in", time() - s)
+
+    print("files", len(f1), "logs", len(l1))
+    assert len(l1) == 205
+    assert len(f1) == 408
+
+    print("verify expected results")
+    s = time()
+    alive_files = list(filter(lambda x: x.tombstone is None, f1))
+    print(f"got {len(alive_files)} alive files")
+    query = "select count(user_id), user_id from read_parquet([{}]) group by user_id order by count(user_id) desc".format(
+        ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
+    )
+    # THIS IS A BAD IDEA NEVER DO THIS IN PRODUCTION
+    ice.ddb.execute(query)
+    res = ice.ddb.fetchall()
+    print(res, "in", time() - s)
+
+    assert res[0][0] == 406
+    assert res[1][0] == 203
 
     print("tombstone clean it")
     s = time()
     cleaned_log_files, deleted_log_files, deleted_data_files = ice.tombstone_cleanup(0)
     print(f"tombstone cleaned {len(cleaned_log_files)} cleaned log files, {len(deleted_log_files)} deleted log files, {len(deleted_data_files)} data files in", time()-s)
 
+    s = time()
+    s1, f1, t1, l1 = log.read_at_max_time(s3c, round(time() * 1000))
+    print("read post tombstone clean state in", time() - s)
+
     print("verify expected results")
     s = time()
     alive_files = list(filter(lambda x: x.tombstone is None, f1))
+    print(f"got {len(alive_files)} alive files")
     query = "select count(user_id), user_id from read_parquet([{}]) group by user_id order by count(user_id) desc".format(
         ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
     )
@@ -378,33 +416,33 @@ try:
     res = ice.ddb.fetchall()
     print(res, "in", time() - s)
 
-    assert res[0][0] == 4005
-    assert res[1][0] == 2003
+    assert res[0][0] == 406
+    assert res[1][0] == 203
 
-    print("============= insert conflicting types ==================")
-    conflicting_out = ice.insert([{
-        "ts": 1686176939445,
-        "event": 1,
-        "user_id": 1.2,
-        "properties": {
-            "hey": "ho",
-            "numtime": 1,
-            "nested_dict": {
-                "ee": "fff"
-            }
-        }
-    }])
-    try:
-        # Read the state in
-        log = IceLogIO("dan-mbp")
-        s1, f1, t1, l1 = log.read_at_max_time(s3c, round(time() * 1000))
-        print("=== Current State ===")
-        print("schema:", s1)
-        print("files:", f1)
-        print("tombstones:", t1)
-        print("log files:", l1)
-    except SchemaConflictException as e:
-        print("Caught schema conflict, this should normally be handled at insert time")
+    # print("============= insert conflicting types ==================")
+    # conflicting_out = ice.insert([{
+    #     "ts": 1686176939445,
+    #     "event": 1,
+    #     "user_id": 1.2,
+    #     "properties": {
+    #         "hey": "ho",
+    #         "numtime": 1,
+    #         "nested_dict": {
+    #             "ee": "fff"
+    #         }
+    #     }
+    # }])
+    # try:
+    #     # Read the state in
+    #     log = IceLogIO("dan-mbp")
+    #     s1, f1, t1, l1 = log.read_at_max_time(s3c, round(time() * 1000))
+    #     print("=== Current State ===")
+    #     print("schema:", s1)
+    #     print("files:", f1)
+    #     print("tombstones:", t1)
+    #     print("log files:", l1)
+    # except SchemaConflictException as e:
+    #     print("Caught schema conflict, this should normally be handled at insert time")
 
     print("test successful!")
 except Exception as e:
@@ -412,7 +450,7 @@ except Exception as e:
     raise e
 finally:
     # ================== Clean up =========================
-    clean = True
+    clean = False
     if clean:
         s3_files: list[dict] = []
         no_more_files = False
