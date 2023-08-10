@@ -17,7 +17,6 @@ interface {
   sch: number // line number that the accumulated schema begins at
   f: number // line number that the list of file markers begins at
   tmb?: number // line number that the list of log file tombstones start at
-  m?: number // the unix ms of the oldest file found during a merge, if this file was made out of a merge
 }
 ```
 
