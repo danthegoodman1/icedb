@@ -425,6 +425,38 @@ try:
     assert res[0][0] == 406
     assert res[1][0] == 203
 
+    testS3Proxy = True
+    if testS3Proxy:
+        print("============= testing s3 proxy ==================")
+
+        s3proxy = S3Client(s3prefix="tenant", s3bucket="testbucket", s3region="us-east-1",
+                           s3endpoint="http://localhost:8080",
+                           s3accesskey="user", s3secretkey="password")
+
+        iceproxy = IceDBv3(
+            part_func,
+            ['event', 'ts'],
+            format_row,
+            "us-east-1",
+            "user",
+            "password",
+            "http://localhost:8080",
+            s3proxy,  # this is for getting and reading state
+            "dan-mbp",
+            True
+        )
+
+        query = ("select count(user_id), user_id from read_parquet(['s3://testbucket/**/*.parquet']) group by user_id "
+                 "order by count(user_id) desc")
+        print("running query", query)
+        s = time()
+        iceproxy.ddb.execute(query)
+        res = iceproxy.ddb.fetchall()
+        print(res, "in", time() - s)
+
+        assert res[0][0] == 406
+        assert res[1][0] == 203
+
     # print("============= insert conflicting types ==================")
     # conflicting_out = ice.insert([{
     #     "ts": 1686176939445,
