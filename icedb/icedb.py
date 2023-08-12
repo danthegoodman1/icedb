@@ -1,401 +1,334 @@
-import os
-from typing import List, Callable
+from typing import List, Callable, Dict
 import duckdb
-import psycopg2
-from typing import List
 from uuid import uuid4
 import pandas as pd
-import duckdb.typing as ty
-import psycopg2
-import boto3
-import botocore
-import psycopg2.extensions
-import sys
-import datetime
+from log import (IceLogIO, Schema, LogMetadata, S3Client, FileMarker, LogTombstone, get_log_file_info,
+                 LogMetadataFromJSON, LogTombstoneFromJSON, FileMarkerFromJSON)
+from time import time
+import json
 
 PartitionFunctionType = Callable[[dict], str]
 FormatRowType = Callable[[dict], dict]
 
-class IceDB:
 
-    partitionStrategy: PartitionFunctionType
-    sortOrder: List[str]
-    formatRow: FormatRowType
+class IceDBv3:
+    partition_function: PartitionFunctionType
+    sort_order: List[str]
+    format_row: FormatRowType
     ddb: duckdb
-    s3region: str
-    s3accesskey: str
-    s3secretkey: str
-    s3endpoint: str
-    s3bucket: str
-    pgdsn: str
-    s3: any
-    set_isolation: bool
-    unique_row_key: str = None
-    custom_merge_query: str = None
+    s3c: S3Client
+    unique_row_key: str | None
+    custom_merge_query: str | None
     row_group_size: int
+    path_safe_hostname: str
 
     def __init__(
-        self,
-        partitionStrategy: PartitionFunctionType,
-        sortOrder: List[str],
-        formatRow: FormatRowType,
-        pgdsn: str,
-        s3bucket: str,
-        s3region: str,
-        s3accesskey: str,
-        s3secretkey: str,
-        s3endpoint: str,
-        set_isolation=False,
-        create_table=True,
-        duckdb_ext_dir: str=None,
-        unique_row_key: str=None,
-        row_group_size: int=122_880
+            self,
+            partition_function: PartitionFunctionType,
+            sort_order: List[str],
+            format_row: FormatRowType,
+            s3_region: str,
+            s3_access_key: str,
+            s3_secret_key: str,
+            s3_endpoint: str,
+            s3_client: S3Client,
+            path_safe_hostname: str,
+            s3_use_path: bool = False,
+            duckdb_ext_dir: str = None,
+            custom_merge_query: str = None,
+            unique_row_key: str = None,
+            row_group_size: int = 122_880
     ):
-        self.partitionStrategy = partitionStrategy
-        self.sortOrder = sortOrder
-        self.formatRow = formatRow
-        self.set_isolation = set_isolation
+        self.partition_function = partition_function
+        self.sort_order = sort_order
+        self.format_row = format_row
         self.row_group_size = row_group_size
-
-        self.s3region = s3region
-        self.s3accesskey = s3accesskey
-        self.s3secretkey = s3secretkey
-        self.s3endpoint = s3endpoint
-        self.s3bucket = s3bucket
-
-        self.pgdsn = pgdsn
-
+        self.path_safe_hostname = path_safe_hostname
         self.unique_row_key = unique_row_key
-
-        self.session = boto3.session.Session()
-        self.s3 = self.session.client('s3',
-            config=botocore.config.Config(s3={'addressing_style': 'path'}),
-            region_name=s3region,
-            endpoint_url=s3endpoint,
-            aws_access_key_id=s3accesskey,
-            aws_secret_access_key=s3secretkey
-        )
+        self.s3c = s3_client
+        self.custom_merge_query = custom_merge_query
 
         self.ddb = duckdb.connect(":memory:")
         self.ddb.execute("install httpfs")
         self.ddb.execute("load httpfs")
-        self.ddb.execute("SET s3_region='{}'".format(s3region))
-        self.ddb.execute("SET s3_access_key_id='{}'".format(s3accesskey))
-        self.ddb.execute("SET s3_secret_access_key='{}'".format(s3secretkey))
-        self.ddb.execute("SET s3_endpoint='{}'".format(s3endpoint.split("://")[1]))
-        self.ddb.execute("SET s3_use_ssl={}".format('false' if "http://" in s3endpoint else 'true'))
-        self.ddb.execute("SET s3_url_style='path'")
+        self.ddb.execute(f"SET s3_region='{s3_region}'")
+        self.ddb.execute(f"SET s3_access_key_id='{s3_access_key}'")
+        self.ddb.execute(f"SET s3_secret_access_key='{s3_secret_key}'")
+        self.ddb.execute(f"SET s3_endpoint='{s3_endpoint.split('://')[1]}'")
+        self.ddb.execute(f"SET s3_use_ssl={'false' if 'http://' in s3_endpoint else 'true'}")
+
+        if s3_use_path:
+            self.ddb.execute("SET s3_url_style='path'")
         if duckdb_ext_dir is not None:
-            self.ddb.execute("SET extension_directory='{}'".format(duckdb_ext_dir))
+            self.ddb.execute(f"SET extension_directory='{duckdb_ext_dir}'")
 
-        if create_table:
-            conn = self.getconn()
-            try:
-                with conn.cursor() as cursor:
-                    cursor.execute('''
-                        create table if not exists known_files (
-                            partition TEXT NOT NULL,
-                            filename TEXT NOT NULL,
-                            filesize INT8 NOT NULL,
-                            active BOOLEAN NOT NULL DEFAULT TRUE,
-                            _created TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                            _updated TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                            PRIMARY KEY(active, partition, filename)
-                        )
-                    ''')
-                    cursor.execute('commit')
-            finally:
-                conn.close()
-    def close(self):
-        pass
-
-    def getconn(self):
-        pgc = psycopg2.connect(self.pgdsn)
-        pgc.autocommit = False
-        return pgc
-
-    def insert(self, rows: List[dict]) -> List[str]:
+    def insert(self, rows: list[dict]) -> list[FileMarker]:
         """
-        Creates one or more files in the destination folder based on the partition strategy
-        :param rows: Rows of JSON data to be inserted. Must have the expected keys of the partitioning strategy and the sorting order
+        Creates one or more files in the destination folder based on the partition strategy :param rows: Rows of JSON
+        data to be inserted. Must have the expected keys of the partitioning strategy and the sorting order
         """
-        partmap = {}
+        part_map: Dict[str, list[dict]] = {}
         for row in rows:
             # merge the rows into same parts
-            part = self.partitionStrategy(row)
-            if part not in partmap:
-                partmap[part] = []
-            partmap[part].append(row)
+            part = self.partition_function(row)
+            if part not in part_map:
+                part_map[part] = []
+            part_map[part].append(row)
 
-        final_files = []
-        for part in partmap:
+        running_schema = Schema()
+        file_markers: list[FileMarker] = []
+
+        for part in part_map:
             # upload parquet file
-            filename = '{}.parquet'.format(uuid4())
-            fullpath = part + '/' + filename
-            final_files.append(fullpath)
-            partrows = partmap[part]
+            filename = str(uuid4()) + '.parquet'
+            path_parts = ['_data', part, filename]
+            if self.s3c.s3prefix is not None:
+                path_parts = [self.s3c.s3prefix] + path_parts
+            fullpath = '/'.join(path_parts)
+            part_rows = part_map[part]
 
             # use a DF for inserting into duckdb
-            first_row = self.formatRow(partrows[0].copy()) # need to make copy so we don't modify
-            first_row['_row_id'] = str(uuid4()) if self.unique_row_key is None else partrows[0][self.unique_row_key]
+            first_row = self.format_row(part_rows[0].copy())  # need to make copy so we don't modify
+            first_row['_row_id'] = str(uuid4()) if self.unique_row_key is None else part_rows[0][self.unique_row_key]
             for key in first_row:
                 # convert everything to array
                 first_row[key] = [first_row[key]]
             df = pd.DataFrame(first_row)
-            if len(partrows) > 1:
+            if len(part_rows) > 1:
                 # we need to add more rows
-                for row in partrows[1:]:
-                    new_row = self.formatRow(row.copy()) # need to make copy so we don't modify
+                for row in part_rows[1:]:
+                    new_row = self.format_row(row.copy())  # need to make copy so we don't modify
                     new_row['_row_id'] = str(uuid4()) if self.unique_row_key is None else row[self.unique_row_key]
                     df.loc[len(df)] = new_row
 
+            # get schema
+            self.ddb.execute("describe select * from df")
+            schema_df = self.ddb.df()
+            running_schema.accumulate(schema_df['column_name'].tolist(), schema_df['column_type'].tolist())
+
             # copy to parquet file
-            self.ddb.sql('''
-                copy (select * from df order by {}) to '{}' (FORMAT PARQUET, ROW_GROUP_SIZE {})
-            '''.format(', '.join(self.sortOrder), 's3://{}/{}'.format(self.s3bucket, fullpath), self.row_group_size))
+            self.ddb.execute(
+                f"copy (select * from df order by {','.join(self.sort_order)}) to 's3://{self.s3c.s3bucket}/{fullpath}' (FORMAT PARQUET, ROW_GROUP_SIZE {self.row_group_size})")
 
             # get file metadata
-            obj = self.s3.head_object(
-                Bucket=self.s3bucket,
+            obj = self.s3c.s3.head_object(
+                Bucket=self.s3c.s3bucket,
                 Key=fullpath
             )
-            fileSize = obj['ContentLength']
+            file_markers.append(FileMarker(fullpath, round(time() * 1000), obj['ContentLength']))
 
-            # insert into meta store
-            conn = self.getconn()
-            try:
-                with conn.cursor() as cursor:
-                    cursor.execute('''
-                        insert into known_files (filename, filesize, partition)  VALUES ('{}', {}, '{}')
-                    '''.format(filename, fileSize, part))
-                    cursor.execute('commit')
-            finally:
-                conn.close()
+        # Append to log
+        logio = IceLogIO(self.path_safe_hostname)
+        log_path, log_meta = logio.append(self.s3c, 1, running_schema, file_markers)
 
-        return final_files
+        return file_markers
 
-    def merge_files(self, maxFileSize, maxFileCount=10, asc=False, partition_prefix: str=None, custom_merge_query: str=None) -> int:
-        '''
+    def get_schema(self, rows: list[dict]):
+        """
+        Creates one or more files in the destination folder based on the partition strategy :param rows: Rows of JSON
+        data to be inserted. Must have the expected keys of the partitioning strategy and the sorting order
+        """
+        running_schema = Schema()
+
+        first_row = self.format_row(rows[0].copy())  # need to make copy so we don't modify
+        first_row['_row_id'] = str(uuid4()) if self.unique_row_key is None else rows[0][self.unique_row_key]
+        for key in first_row:
+            # convert everything to array
+            first_row[key] = [first_row[key]]
+        df = pd.DataFrame(first_row)
+        if len(rows) > 1:
+            # we need to add more rows
+            for row in rows[1:]:
+                new_row = self.format_row(row.copy())  # need to make copy so we don't modify
+                new_row['_row_id'] = str(uuid4()) if self.unique_row_key is None else row[self.unique_row_key]
+                df.loc[len(df)] = new_row
+
+        # get schema
+        self.ddb.execute("describe select * from df")
+        schema_df = self.ddb.df()
+        running_schema.accumulate(schema_df['column_name'].tolist(), schema_df['column_type'].tolist())
+
+        return running_schema
+
+    def merge(self, max_file_size=10_000_000, max_file_count=10, asc=False,
+              custom_merge_query: str = None) -> tuple[
+        str | None, FileMarker | None, str | None, list[FileMarker] | None, LogMetadata | None]:
+        """
         desc merge should be fast, working on active partitions. asc merge should be slow and in background,
         slowly fully optimizes partitions over time.
 
         Returns the number of files merged.
-        '''
-        # cursor scan active files in the direction
-        curid = "a"+str(uuid4()).replace("-", "")
-        buf = []
-        fsum = 0
-        conn = self.getconn()
-        try:
-            with conn.cursor() as mycur:
-                if self.set_isolation:
-                    # don't need serializable isolation here, just need a snapshot
-                    # if the files change between the next transaction, then they will be omitted from the first query selecting them
-                    mycur.execute("set transaction isolation level repeatable read")
+        """
+        logio = IceLogIO(self.path_safe_hostname)
+        cur_schema, cur_files, cur_tombstones, all_log_files = logio.read_at_max_time(self.s3c, round(time() * 1000))
 
-                # need to manually start cursor because this is "not in a transaction yet"?
-                mycur.execute('''
-                declare {} cursor for
-                select partition, filename, filesize
-                from known_files
-                where active = true
-                and filesize < {}
-                {}
-                order by partition {}
-                '''.format(
-                    curid,
-                    maxFileSize,
-                    '' if partition_prefix is None else "and partition LIKE '{}%'".format(partition_prefix),
-                    'asc' if asc else 'desc')
+        # Group by partition
+        partitions: Dict[str, list[FileMarker]] = {}
+        for file in cur_files:
+            file_path = file.path
+            if self.s3c.s3prefix is not None:
+                file_path = file_path.removeprefix(self.s3c.s3prefix + "/_data/")
+            path_parts = file_path.split("/")
+            # remove the file name
+            partition = '/'.join(path_parts[:-1])
+            if partition not in partitions:
+                partitions[partition] = []
+            partitions[partition].append(file)
+
+        # sort the dict
+        partitions = dict(sorted(partitions.items(), key=lambda item: len(item[1]), reverse=not asc))
+        for partition, file_markers in partitions.items():
+            if len(file_markers) <= 1:
+                continue
+            # sort the items in the array by file size, asc
+            sorted_file_markers = sorted(file_markers, key=lambda item: item.fileBytes)
+            # aggregate until we meet the max file count or limit
+            acc_bytes = 0
+            acc_file_markers: list[FileMarker] = []
+            for file_marker in sorted_file_markers:
+                if file_marker.tombstone is not None:
+                    continue
+                acc_bytes += file_marker.fileBytes
+                acc_file_markers.append(file_marker)
+                if acc_bytes >= max_file_size or len(acc_file_markers) > 1 and len(acc_file_markers) >= max_file_count:
+                    # then we merge
+                    break
+            if len(acc_file_markers) > 1:
+                # merge data parts
+                filename = str(uuid4()) + '.parquet'
+                path_parts = ['_data', partition, filename]
+                if self.s3c.s3prefix is not None:
+                    path_parts = [self.s3c.s3prefix] + path_parts
+                fullpath = '/'.join(path_parts)
+
+                q = "COPY ({}) TO '{}' (FORMAT PARQUET, ROW_GROUP_SIZE {})".format(
+                    ("select * from source_files" if custom_merge_query is None else custom_merge_query).replace(
+                        "source_files", "read_parquet(?, hive_partitioning=1)"),
+                    's3://{}/{}'.format(self.s3c.s3bucket, fullpath),
+                    self.row_group_size
                 )
-                keepGoing = True
-                while keepGoing:
-                    mycur.execute("""
-                    fetch forward {} from {}
-                    """.format(200, curid))
-                    rows = mycur.fetchall()
-                    if len(rows) == 0:
-                        conn.rollback()
-                        keepGoing = False
-                        break
-                    for row in rows:
-                        if len(buf) > 0 and row[0] != buf[0][0]:
-                            if len(buf) > 1:
-                                # we've hit the end of the partition and we can merge it
-                                print("I've hit the end of the partition with files to merge")
-                                conn.rollback()
-                                keepGoing = False
-                                break
 
-                            # we've hit the next partition, clear the buffer
-                            print('buffer exceeded for {}, going to next partition'.format(buf[0][0]))
-                            buf = []
-                            fsum = 0
+                self.ddb.execute(q, [
+                    list(map(lambda x: f"s3://{self.s3c.s3bucket}/{x.path}", acc_file_markers))
+                ])
 
-                        # check if we would exceed the max file size
-                        if len(buf) > 1 and fsum > maxFileSize:
-                            print('I hit the max file size with {} bytes, going to start merging!'.format(fsum))
-                            conn.rollback()
-                            keepGoing = False
-                            break
+                # get the new file size
+                obj = self.s3c.s3.head_object(
+                    Bucket=self.s3c.s3bucket,
+                    Key=fullpath
+                )
+                merged_file_size = obj['ContentLength']
 
-                        # check if we exceeded the max file count, only if valid count
-                        if len(buf) > 1 and len(buf) >= maxFileCount:
-                            print('I hit the max file count with {} files, going to start merging!'.format(len(buf)))
-                            conn.rollback()
-                            keepGoing = False
-                            break
+                # Now we need to get the current state of the files we just merged, and write that plus the new state
+                # We can keep the current schema
+                merged_log_files = list(map(lambda x: x.vir_source_log_file, acc_file_markers))
+                m_schema, m_file_markers, m_tombstones = logio.read_log_forward(self.s3c, merged_log_files)
 
-                        buf.append(row)
-                        fsum += row[2]
-        except Exception as e:
-            print("failed merge", e)
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            print(exc_type, fname, exc_tb.tb_lineno)
-            conn.rollback()
-        finally:
-            conn.close()
+                # create new log file with tombstones
+                acc_file_paths = list(map(lambda x: x.path, acc_file_markers))
+                merged_time = round(time() * 1000)
+                new_file_marker = FileMarker(fullpath, merged_time, merged_file_size)
 
-        # select the files for update to make sure they are all still active, anything not active we drop (from colliding merges)
-        # if there is only 1 file, then we have nothing to merge
-        if len(buf) > 1:
-            partition = buf[0][0]
-            # merge these files, update DB
-            print('I have files for merging! going to lock them now, len:', len(buf))
-            conn = self.getconn()
-            try:
-                with conn.cursor() as mergecur:
-                    # lock the files up
-                    if self.set_isolation:
-                        # now we need serializable isolation to protect against concurrent merges
-                        mergecur.execute("set transaction isolation level serializable")
+                updated_markers = list(map(lambda x: FileMarker(
+                    x.path,
+                    x.createdMS,
+                    x.fileBytes,
+                    merged_time if x.path in acc_file_paths else x.tombstone),
+                                           m_file_markers))
 
-                    q = '''
-                        select filename
-                        from known_files
-                        where active = true
-                        and partition = '{}'
-                        and filename in ({})
-                        for update
-                    '''.format(partition, ','.join(list(map(lambda x: "'{}'".format(x[1]), buf))))
-                    mergecur.execute(q)
-                    rows = mergecur.fetchall()
-                    actual_files = list(map(lambda x: x[0], rows))
 
-                    if len(actual_files) == 0:
-                        print('no actual files during merge, were there competing merges? I am exiting.')
-                        return 0
-                    if len(actual_files) == 1:
-                        print('only got a single file when locking files for merging, were there competing merges? I am exiting.')
-                        return 0
-                    new_f_name = '{}.parquet'.format(str(uuid4()))
-                    new_f_path = partition + "/" + new_f_name
-                    
-                    # copy the files in S3
-                    q = '''
-                    COPY (
-                        {}
-                    ) TO '{}' (FORMAT PARQUET, ROW_GROUP_SIZE {})
-                    '''.format(
-                        ('''
-                        select *
-                        from source_files
-                        ''' if custom_merge_query is None else custom_merge_query).replace("source_files", "read_parquet(?, hive_partitioning=1)"),
-                        's3://{}/{}'.format(self.s3bucket, new_f_path),
-                        self.row_group_size
-                    )
+                new_tombstones = list(map(lambda x: LogTombstone(x, merged_time),
+                                          merged_log_files))
 
-                    self.ddb.execute(q, [
-                        list(map(lambda x: "s3://{}/{}/{}".format(self.s3bucket, partition, x), actual_files))
-                    ])
+                new_log, meta = logio.append(
+                    self.s3c,
+                    1,
+                    m_schema,
+                    updated_markers + [
+                        new_file_marker
+                    ],
+                    m_tombstones + new_tombstones,
+                    merged=True
+                )
 
-                    # get the new file size
-                    obj = self.s3.head_object(
-                        Bucket=self.s3bucket,
-                        Key=new_f_path
-                    )
-                    new_f_size = obj['ContentLength']
+                return new_log, new_file_marker, partition, acc_file_markers, meta
 
-                    # update the old files
-                    q = '''
-                        update known_files
-                        set active = false
-                        , _updated = NOW()
-                        where active = true
-                        and partition = '{}'
-                        and filename in ({})
-                    '''.format(partition, ','.join(list(map(lambda x: "'{}'".format(x), actual_files))))
-                    mergecur.execute(q)
+        # otherwise we did not merge
+        return None, None, None, [], None
 
-                    # insert the new file
-                    mergecur.execute('''
-                        insert into known_files (filename, filesize, partition)  VALUES ('{}', {}, '{}')
-                    '''.format(new_f_name, new_f_size, partition))
-
-                    mergecur.execute('commit')
-                    print('merged files', actual_files)
-                    return len(actual_files)
-            except:
-                conn.rollback()
-                raise
-            finally:
-                conn.close()
-        return 0
-
-    def get_files(self, gte_part: str, lte_part: str) -> List[str]:
-        conn = self.getconn()
-        try:
-            with conn.cursor() as mycur:
-                mycur.execute('''
-                select partition, filename
-                from known_files
-                where active = true
-                AND partition >= %s
-                AND partition <= %s
-                ''', (gte_part, lte_part))
-                rows = mycur.fetchall()
-                return list(map(lambda x: 's3://{}/{}/{}'.format(self.s3bucket, x[0], x[1]), rows))
-        finally:
-            conn.close()
-
-    def remove_inactive_parts(self, min_age_ms: int, partition_prefix: str = None, limit = 10) -> str:
-        '''
+    def tombstone_cleanup(self, min_age_ms: int) -> tuple[list[str], list[str], list[str]]:
+        """
         Removes parquet files that are no longer active, and are older than some age. Returns the number of files deleted.
 
         For performance, icedb will optimistically delete files from S3, meaning that if a crash occurs during the middle of a removal then files may be left in S3 even though they are seen as deleted in the DB.
 
-        The best mitigation for this is multiple small removal operations.
-        '''
-        conn = self.getconn()
-        try:
-            with conn.cursor() as mycur:
-                # find files to remove
-                mycur.execute(f'''
-                delete
-                from known_files
-                where (active, partition, filename) IN (
-                    select active, partition, filename
-                    from known_files
-                    where active = false
-                    and _updated <= '{(datetime.datetime.now() - datetime.timedelta(milliseconds=min_age_ms)).isoformat()}'
-                    {'' if partition_prefix is None else f"and partition like '{partition_prefix}%'"}
-                    limit {limit}
+        Returns the list of log files that were cleaned, log files that were deleted, and data files that
+        were deleted
+        """
+        logio = IceLogIO(self.path_safe_hostname)
+        cleaned_log_files: list[str] = []
+        deleted_log_files: list[str] = []
+        deleted_data_files: list[str] = []
+        now = round(time() * 1000)
+
+        current_log_files = logio.get_current_log_files(self.s3c)
+        # We only need to get merge files
+        merge_log_files = list(filter(lambda x: get_log_file_info(x['Key'])[1], current_log_files))
+        for file in merge_log_files:
+            obj = self.s3c.s3.get_object(
+                Bucket=self.s3c.s3bucket,
+                Key=file['Key']
+            )
+            jsonl = str(obj['Body'].read(), encoding="utf-8").split("\n")
+            meta_json = json.loads(jsonl[0])
+            meta = LogMetadataFromJSON(meta_json)
+
+            # Log tombstones
+            log_files_to_delete: list[str] = []
+            if meta.tombstoneLineIndex is not None:
+                for i in range(meta.tombstoneLineIndex, meta.fileLineIndex):
+                    tmb = LogTombstoneFromJSON(dict(json.loads(jsonl[i])))
+                    if tmb.createdMS <= now - min_age_ms:
+                        log_files_to_delete.append(tmb.path)
+
+            # File markers
+            file_markers: list[FileMarker] = []
+            for i in range(meta.fileLineIndex, len(jsonl)):
+                fm_json = dict(json.loads(jsonl[i]))
+                fm = FileMarkerFromJSON(fm_json)
+                file_markers.append(fm)
+
+            # Delete log tombstones
+            for log_path in log_files_to_delete:
+                self.s3c.s3.delete_object(
+                    Bucket=self.s3c.s3bucket,
+                    Key=log_path
                 )
-                returning partition, filename, filesize
-                ''')
-                rows = mycur.fetchall()
 
-                mycur.execute('commit')
+            # Delete data tombstones
+            file_markers_to_delete: list[FileMarker] = list(filter(lambda x: x.createdMS <= now - min_age_ms and
+                                                                             x.tombstone is not None, file_markers))
+            for data_path in file_markers_to_delete:
+                self.s3c.s3.delete_object(
+                    Bucket=self.s3c.s3bucket,
+                    Key=data_path.path
+                )
 
-                # remove from s3 (continue if not found)
-                for deleted in rows:
-                    self.s3.delete_object(
-                        Bucket=self.s3bucket,
-                        Key=deleted[0] + '/' + deleted[1]
-                    )
-                return list(map(lambda x: 's3://{}/{}/{}'.format(self.s3bucket, x[0], x[1]), rows))
-        except Exception as e:
-            raise e
-        finally:
-            conn.close()
+            # Upsert log file
+            schema = Schema()
+            schema_json = dict(json.loads(jsonl[meta.schemaLineIndex]))
+            schema.accumulate(list(schema_json.keys()), list(schema_json.values()))
+            new_log, _ = logio.append(
+                self.s3c,
+                1,
+                schema,
+                list(filter(lambda x: x.tombstone is None or x.createdMS > now - min_age_ms, file_markers)),
+                None,
+                merged=True,
+                timestamp=meta.timestamp
+            )
+            cleaned_log_files.append(file['Key'])
+            deleted_log_files += log_files_to_delete
+            deleted_data_files += list(map(lambda x: x.path, file_markers_to_delete))
+
+        return cleaned_log_files, deleted_log_files, deleted_data_files

@@ -26,3 +26,10 @@ docker exec ch clickhouse-client -q "SELECT sum(JSONExtractInt(properties, 'numt
 ```
 
 This will show the same results as found in the final query of `examples/simple.py`
+
+You can create a parameterized view for a nicer query experience like:
+```
+docker exec ch clickhouse-client -q "create view icedb as select * from s3(get_files(toYear({start_date:Date}), toMonth({start_date:Date}), toDate({start_date:Date}), toYear({end_date:Date}), toMonth({end_date:Date}), toDate({end_date:Date})), 'user', 'password', 'Parquet')"
+
+docker exec ch clickhouse-client -q "SELECT sum(JSONExtractInt(properties, 'numtime')), user_id from icedb where start_date = '2023-02-01' and end_date = '2023-08-01 and event = 'page_load' group by user_id FORMAT Pretty;"
+```
