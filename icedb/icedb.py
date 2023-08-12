@@ -123,6 +123,33 @@ class IceDBv3:
 
         return file_markers
 
+    def get_schema(self, rows: list[dict]):
+        """
+        Creates one or more files in the destination folder based on the partition strategy :param rows: Rows of JSON
+        data to be inserted. Must have the expected keys of the partitioning strategy and the sorting order
+        """
+        running_schema = Schema()
+
+        first_row = self.format_row(rows[0].copy())  # need to make copy so we don't modify
+        first_row['_row_id'] = str(uuid4()) if self.unique_row_key is None else rows[0][self.unique_row_key]
+        for key in first_row:
+            # convert everything to array
+            first_row[key] = [first_row[key]]
+        df = pd.DataFrame(first_row)
+        if len(rows) > 1:
+            # we need to add more rows
+            for row in rows[1:]:
+                new_row = self.format_row(row.copy())  # need to make copy so we don't modify
+                new_row['_row_id'] = str(uuid4()) if self.unique_row_key is None else row[self.unique_row_key]
+                df.loc[len(df)] = new_row
+
+        # get schema
+        self.ddb.execute("describe select * from df")
+        schema_df = self.ddb.df()
+        running_schema.accumulate(schema_df['column_name'].tolist(), schema_df['column_type'].tolist())
+
+        return running_schema
+
     def merge(self, max_file_size=10_000_000, max_file_count=10, asc=False,
               custom_merge_query: str = None) -> tuple[
         str | None, FileMarker | None, str | None, list[FileMarker] | None, LogMetadata | None]:

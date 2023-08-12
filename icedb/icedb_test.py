@@ -1,4 +1,4 @@
-from icedb.icedb import IceDBv3
+from icedb import IceDBv3
 from log import S3Client, IceLogIO, SchemaConflictException
 from datetime import datetime
 import json
@@ -107,6 +107,12 @@ more_example_events = [
 ]
 
 try:
+    print("============= schema introspection ==================")
+    schema = ice.get_schema(example_events)
+    schemaJSON = schema.toJSON()
+    assert schemaJSON == '{"ts": "BIGINT", "event": "VARCHAR", "user_id": "VARCHAR", "properties": "VARCHAR", "_row_id": "VARCHAR"}'
+    print("schema valid")
+
     print("============= inserting ==================")
     inserted = ice.insert(example_events)
     firstInserted = list(map(lambda x: x.path, inserted))
