@@ -6,6 +6,15 @@ from log import (IceLogIO, Schema, LogMetadata, S3Client, FileMarker, LogTombsto
                  LogMetadataFromJSON, LogTombstoneFromJSON, FileMarkerFromJSON)
 from time import time
 import json
+from enum import Enum
+
+
+class CompressionCodec(Enum):
+    UNCOMPRESSED = "UNCOMPRESSED"
+    SNAPPY = "SNAPPY"
+    ZSTD = "ZSTD"
+    GZIP = "GZIP"
+
 
 PartitionFunctionType = Callable[[dict], str]
 FormatRowType = Callable[[dict], dict]
@@ -21,6 +30,7 @@ class IceDBv3:
     custom_merge_query: str | None
     row_group_size: int
     path_safe_hostname: str
+    compression_codec: CompressionCodec
 
     def __init__(
             self,
@@ -37,7 +47,8 @@ class IceDBv3:
             duckdb_ext_dir: str = None,
             custom_merge_query: str = None,
             unique_row_key: str = None,
-            row_group_size: int = 122_880
+            row_group_size: int = 122_880,
+            compression_codec: CompressionCodec = CompressionCodec.SNAPPY
     ):
         self.partition_function = partition_function
         self.sort_order = sort_order
@@ -56,6 +67,11 @@ class IceDBv3:
         self.ddb.execute(f"SET s3_secret_access_key='{s3_secret_key}'")
         self.ddb.execute(f"SET s3_endpoint='{s3_endpoint.split('://')[1]}'")
         self.ddb.execute(f"SET s3_use_ssl={'false' if 'http://' in s3_endpoint else 'true'}")
+        print(compression_codec)
+        if not isinstance(compression_codec, CompressionCodec):
+            raise AttributeError(f"invalid compression codec '{compression_codec}', must be one of type CompressionCodec")
+
+        self.compression_codec = compression_codec
 
         if s3_use_path:
             self.ddb.execute("SET s3_url_style='path'")
@@ -108,7 +124,9 @@ class IceDBv3:
 
             # copy to parquet file
             self.ddb.execute(
-                f"copy (select * from df order by {','.join(self.sort_order)}) to 's3://{self.s3c.s3bucket}/{fullpath}' (FORMAT PARQUET, ROW_GROUP_SIZE {self.row_group_size})")
+                f"copy (select * from df order by {','.join(self.sort_order)}) to 's3://{self.s3c.s3bucket}/"
+                f"{fullpath}' (FORMAT PARQUET, CODEC '{self.compression_codec.value}', ROW_GROUP_SIZE"
+                f" {self.row_group_size})")
 
             # get file metadata
             obj = self.s3c.s3.head_object(
@@ -201,11 +219,11 @@ class IceDBv3:
                     path_parts = [self.s3c.s3prefix] + path_parts
                 fullpath = '/'.join(path_parts)
 
-                q = "COPY ({}) TO '{}' (FORMAT PARQUET, ROW_GROUP_SIZE {})".format(
+                q = "COPY ({}) TO '{}' (FORMAT PARQUET, CODEC '{}', ROW_GROUP_SIZE {})".format(
                     ("select * from source_files" if custom_merge_query is None else custom_merge_query).replace(
                         "source_files", "read_parquet(?, hive_partitioning=1)"),
                     's3://{}/{}'.format(self.s3c.s3bucket, fullpath),
-                    self.row_group_size
+                    self.compression_codec.value, self.row_group_size
                 )
 
                 self.ddb.execute(q, [

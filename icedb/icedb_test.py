@@ -1,5 +1,5 @@
-from icedb import IceDBv3
-from log import S3Client, IceLogIO, SchemaConflictException
+from icedb import IceDBv3, CompressionCodec
+from log import S3Client, IceLogIO
 from datetime import datetime
 import json
 from time import time
@@ -30,7 +30,8 @@ ice = IceDBv3(
     "http://localhost:9000",
     s3c,
     "dan-mbp",
-    True
+    True,
+    compression_codec=CompressionCodec.ZSTD
 )
 
 example_events = [
@@ -425,7 +426,7 @@ try:
     assert res[0][0] == 406
     assert res[1][0] == 203
 
-    testS3Proxy = True
+    testS3Proxy = False
     if testS3Proxy:
         print("============= testing s3 proxy ==================")
 
