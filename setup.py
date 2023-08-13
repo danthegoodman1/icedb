@@ -1,8 +1,8 @@
 from setuptools import setup, find_packages
 
-VERSION = '0.3.1'
+VERSION = '0.3.2'
 DESCRIPTION = 'IceDB'
-LONG_DESCRIPTION = 'IceDB in-process serverless OLAP powered by DuckDB'
+LONG_DESCRIPTION = 'Parquet merge engine'
 
 # Setting up
 setup(
@@ -20,6 +20,6 @@ setup(
         "duckdb==0.8.1",
         "pandas==2.0.2"
     ],
-    keywords=['olap', 'icedb', 'data lake'],
+    keywords=['olap', 'icedb', 'data lake', 'parquet', 'data warehouse', 'analytics'],
     classifiers= []
 )
