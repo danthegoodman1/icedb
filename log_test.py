@@ -1,4 +1,4 @@
-from log import IceLogIO, Schema, FileMarker, LogTombstone, S3Client
+from icedb.log import IceLogIO, Schema, FileMarker, LogTombstone, S3Client
 from time import time
 
 s3c = S3Client(s3prefix="tenant", s3bucket="testbucket", s3region="us-east-1", s3endpoint="http://localhost:9000", s3accesskey="user", s3secretkey="password")

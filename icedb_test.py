@@ -1,5 +1,5 @@
-from icedb import IceDBv3, CompressionCodec
-from log import S3Client, IceLogIO
+from icedb.icedb import IceDBv3, CompressionCodec
+from icedb.log import S3Client, IceLogIO
 from datetime import datetime
 import json
 from time import time
