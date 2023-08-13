@@ -2,7 +2,7 @@ from typing import List, Callable, Dict
 import duckdb
 from uuid import uuid4
 import pandas as pd
-from log import (IceLogIO, Schema, LogMetadata, S3Client, FileMarker, LogTombstone, get_log_file_info,
+from .log import (IceLogIO, Schema, LogMetadata, S3Client, FileMarker, LogTombstone, get_log_file_info,
                  LogMetadataFromJSON, LogTombstoneFromJSON, FileMarkerFromJSON)
 from time import time
 import json
