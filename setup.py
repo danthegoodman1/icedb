@@ -18,8 +18,7 @@ setup(
         "boto3==1.26.151",
         "botocore==1.29.151",
         "duckdb==0.8.1",
-        "pandas==2.0.2",
-        "psycopg2==2.9.6"
+        "pandas==2.0.2"
     ],
     keywords=['olap', 'icedb', 'data lake'],
     classifiers= []
