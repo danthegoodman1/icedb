@@ -88,6 +88,7 @@ print('inserted', firstInserted)
 # Read the state in
 log = IceLogIO("dan-mbp")
 s1, f1, t1, l1 = log.read_at_max_time(s3c, round(time() * 1000))
+alive_files = list(filter(lambda x: x.tombstone is None, f1))
 
 
 print("============= running query =============")
@@ -100,7 +101,62 @@ query = ("select user_id, count(*), (properties::JSON)->>'page_name' as page "
          "from read_parquet([{}]) "
          "group by user_id, page "
          "order by count(user_id) desc").format(
-    ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", f1)))
+    ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
 )
 print(ddb.sql(query))
+
+print("============= inserting events ==================")
+# insert again to create a second data part, value won't change because we are counting
+inserted = ice.insert(example_events)
+firstInserted = list(map(lambda x: x.path, inserted))
+print('inserted (again)', firstInserted)
+
+print("============= merging =============")
+merged_log, new_file, partition, merged_files, meta = ice.merge()
+print(f"merged {len(merged_files)} data files from partition {partition}")
+
+
+print("============= running query =============")
+
+# Read the state in
+log = IceLogIO("dan-mbp")
+s1, f1, t1, l1 = log.read_at_max_time(s3c, round(time() * 1000))
+alive_files = list(filter(lambda x: x.tombstone is None, f1))
+
+# Create a duckdb instance for querying
+ddb = get_local_ddb()
+
+# Run the query
+query = ("select user_id, count(*), (properties::JSON)->>'page_name' as page "
+         "from read_parquet([{}]) "
+         "group by user_id, page "
+         "order by count(user_id) desc").format(
+    ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
+)
+print(ddb.sql(query))
+
+print("============= tombstone cleaning =============")
+cleaned, deleted_log, deleted_data = ice.tombstone_cleanup(0) # 0 ms so we clean everything
+print(f"cleaned {len(cleaned)} log files and deleted {len(deleted_log)} log files and deleted {len(deleted_data)} "
+      f"data files")
+
+print("============= running query =============")
+
+# Read the state in
+log = IceLogIO("dan-mbp")
+s1, f1, t1, l1 = log.read_at_max_time(s3c, round(time() * 1000))
+alive_files = list(filter(lambda x: x.tombstone is None, f1))
+
+# Create a duckdb instance for querying
+ddb = get_local_ddb()
+
+# Run the query
+query = ("select user_id, count(*), (properties::JSON)->>'page_name' as page "
+         "from read_parquet([{}]) "
+         "group by user_id, page "
+         "order by count(user_id) desc").format(
+    ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
+)
+print(ddb.sql(query))
+
 delete_all_s3(s3c)
