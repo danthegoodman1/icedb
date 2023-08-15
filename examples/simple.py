@@ -1,135 +1,106 @@
-from icedb import IceDB
-from datetime import datetime
-import duckdb
-import duckdb.typing as ty
-import json
+"""
+Run:
+`docker compose up -d`
 
-def partStrat(row: dict) -> str:
-    rowTime = datetime.utcfromtimestamp(row['ts']/1000)
-    part = 'y={}/m={}/d={}'.format('{}'.format(rowTime.year).zfill(4), '{}'.format(rowTime.month).zfill(2), '{}'.format(rowTime.day).zfill(2))
+Then:
+`python simple.py`
+"""
+
+from icedb.icedb import IceDBv3, CompressionCodec
+from icedb.log import IceLogIO
+from datetime import datetime
+import json
+from time import time
+from helpers import get_local_ddb, get_local_s3_client, delete_all_s3
+
+s3c = get_local_s3_client()
+
+
+def part_func(row: dict) -> str:
+    """
+    We'll partition by user_id, date
+    """
+    row_time = datetime.utcfromtimestamp(row['ts'] / 1000)
+    part = f"u={row['user_id']}/d={row_time.strftime('%Y-%m-%d')}"
     return part
 
+
 def format_row(row: dict) -> dict:
-    row['properties'] = json.dumps(row['properties']) # convert nested dict to json string
+    """
+    We can take the row as-is, except let's make the properties a JSON string for safety
+    """
+    row['properties'] = json.dumps(row['properties'])  # convert nested dict to json string
     return row
 
-ice = IceDB(
-    partitionStrategy=partStrat,
-    sortOrder=['event', 'ts'],
-    pgdsn="postgresql://root@localhost:26257/defaultdb",
-    s3bucket="testbucket",
-    s3region="us-east-1",
-    s3accesskey="user",
-    s3secretkey="password",
-    s3endpoint="http://localhost:9000",
-    create_table=True,
-    formatRow=format_row
+
+ice = IceDBv3(
+    part_func,
+    ['event', 'ts'], # We are doing to sort by event, then timestamp of the event within the data part
+    format_row,
+    "us-east-1", # This is all local minio stuff
+    "user",
+    "password",
+    "http://localhost:9000",
+    s3c,
+    "dan-mbp",
+    True, # needed for local minio
+    compression_codec=CompressionCodec.ZSTD # Let's force a higher compression level, default is SNAPPY
 )
 
-def get_partition_range(syear: int, smonth: int, sday: int, eyear: int, emonth: int, eday: int) -> list[str]:
-    return ['y={}/m={}/d={}'.format('{}'.format(syear).zfill(4), '{}'.format(smonth).zfill(2), '{}'.format(sday).zfill(2)),
-            'y={}/m={}/d={}'.format('{}'.format(eyear).zfill(4), '{}'.format(emonth).zfill(2), '{}'.format(eday).zfill(2))]
-
-def get_files(syear: int, smonth: int, sday: int, eyear: int, emonth: int, eday: int) -> list[str]:
-    part_range = get_partition_range(syear, smonth, sday, eyear, emonth, eday)
-    return ice.get_files(
-        part_range[0],
-        part_range[1]
-    )
-
-
-
-# This section is just for preparing to query stuff
-ddb = duckdb.connect(":memory:")
-ddb.execute("install httpfs")
-ddb.execute("load httpfs")
-ddb.execute("SET s3_region='us-east-1'")
-ddb.execute("SET s3_access_key_id='user'")
-ddb.execute("SET s3_secret_access_key='password'")
-ddb.execute("SET s3_endpoint='localhost:9000'")
-ddb.execute("SET s3_use_ssl=false")
-ddb.execute("SET s3_url_style='path'")
-ddb.create_function('get_files', get_files, [ty.INTEGER, ty.INTEGER, ty.INTEGER, ty.INTEGER, ty.INTEGER, ty.INTEGER], list[str])
-ddb.sql('''
-    create macro if not exists get_f(start_year:=2023, start_month:=1, start_day:=1, end_year:=2023, end_month:=1, end_day:=1) as get_files(start_year, start_month, start_day, end_year, end_month, end_day)
-''')
-ddb.sql('''
-    create macro if not exists icedb(start_year:=2023, start_month:=1, start_day:=1, end_year:=2023, end_month:=1, end_day:=1) as table select * from read_parquet(get_files(start_year, start_month, start_day, end_year, end_month, end_day), hive_partitioning=1, filename=1)
-''')
-
-# some sample data
-example_events = [{
-    "ts": 1686176939445,
-    "event": "page_load",
-    "user_id": "a",
-    "properties": {
-        "hey": "ho",
-        "numtime": 1,
-        "nested_dict": {
-            "ee": "fff"
+# Some fake events that we are ingesting
+example_events = [
+    {
+        "ts": 1686176939445,
+        "event": "page_load",
+        "user_id": "user_a",
+        "properties": {
+            "page_name": "Home"
+        }
+    }, {
+        "ts": 1676126229999,
+        "event": "page_load",
+        "user_id": "user_b",
+        "properties": {
+            "page_name": "Home"
+        }
+    }, {
+        "ts": 1686176939666,
+        "event": "page_load",
+        "user_id": "user_a",
+        "properties": {
+            "page_name": "Settings"
+        }
+    }, {
+        "ts": 1686176941445,
+        "event": "page_load",
+        "user_id": "user_a",
+        "properties": {
+            "page_name": "Home"
         }
     }
-}, {
-    "ts": 1676126229999,
-    "event": "page_load",
-    "user_id": "b",
-    "properties": {
-        "hey": "hoergergergrergereg",
-        "numtime": 1,
-        "nested_dict": {
-            "ee": "fff"
-        }
-    }
-}, {
-    "ts": 1686176939666,
-    "event": "something_else",
-    "user_id": "a",
-    "properties": {
-        "hey": "ho",
-        "numtime": 1,
-        "nested_dict": {
-            "ee": "fff"
-        }
-    }
-}]
+]
 
-
+print("============= inserting events ==================")
 inserted = ice.insert(example_events)
-print('inserted', inserted)
+firstInserted = list(map(lambda x: x.path, inserted))
+print('inserted', firstInserted)
 
-# see the number of files and aggregation result before we merge
-print('got files', len(get_files(2023,1,1, 2023,8,1)))
-print(ddb.sql('''
-select sum((properties::JSON->>'numtime')::int64) as agg, extract('month' from epoch_ms(ts)) as month
-from icedb(start_month:=2, end_month:=8)
-where event = 'page_load'
-group by month
-order by agg desc
-'''))
+# Read the state in
+log = IceLogIO("dan-mbp")
+s1, f1, t1, l1 = log.read_at_max_time(s3c, round(time() * 1000))
 
-merged = ice.merge_files(100_000)
-print('merged', merged)
-merged = ice.merge_files(100_000)
-print('merged again', merged)
 
-# you will see the aggregation values are the same after the merge
-print(ddb.sql('''
-select sum((properties::JSON->>'numtime')::int64) as agg, extract('month' from epoch_ms(ts)) as month
-from icedb(start_month:=2, end_month:=8)
-where event = 'page_load'
-group by month
-order by agg desc
-'''))
+print("============= running query =============")
 
-print(ddb.sql('''
-select count(*), filename
-from icedb(start_month:=2, end_month:=8)
-group by filename
-'''))
+# Create a duckdb instance for querying
+ddb = get_local_ddb()
 
-# you'll see the file count is smaller now
-print('got files', len(get_files(2020,1,1, 2024,8,1)))
-
-# remove inactive parts
-removed = ice.remove_inactive_parts(1000)
-print('removed', removed, 'files')
+# Run the query
+query = ("select user_id, count(*), (properties::JSON)->>'page_name' as page "
+         "from read_parquet([{}]) "
+         "group by user_id, page "
+         "order by count(user_id) desc").format(
+    ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", f1)))
+)
+print(ddb.sql(query))
+delete_all_s3(s3c)
