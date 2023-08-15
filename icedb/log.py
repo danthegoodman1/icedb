@@ -14,6 +14,8 @@ class SchemaConflictException(Exception):
         self.column = column
         self.foundTypes = foundTypes
         self.message = f"tried to convert schema to JSON with column '{self.column}' conflicting types: {', '.join(foundTypes)}"
+    def __str__(self):
+        return self.message
 
 class NoLogFilesException(Exception):
     column: str
@@ -60,14 +62,17 @@ class Schema:
     def __init__(self):
         self.d = {}
 
-    def accumulate(self, columns: list[str], types: list[str]):
+    def accumulate(self, columns: list[str], types: list[str]) -> bool:
+        added = True
         for i in range(len(columns)):
             col = columns[i]
             colType = types[i]
-            if col in self.d and colType != self.d[col]:
-                raise SchemaConflictException(col, [self.d[col], colType])
+            if col in self.d:
+                added = False
+                if colType != self.d[col]:
+                    raise SchemaConflictException(col, [self.d[col], colType])
             self.d[col] = colType
-        return self
+        return added
 
     def columns(self) -> list[str]:
         cols = []

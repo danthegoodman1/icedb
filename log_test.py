@@ -6,11 +6,14 @@ s3c = S3Client(s3prefix="tenant", s3bucket="testbucket", s3region="us-east-1", s
 log = IceLogIO("dan-mbp")
 
 # create a log file
-logFile = log.append(s3c, 1, Schema().accumulate(["a", "b"], ["VARCHAR", "BIGINT"]), [FileMarker("tenant/_data/d=2023-08-04/a.parquet", time()-10 * 1000, 123), FileMarker("tenant/_data/d=2023-08-04/b.parquet", time()-11 * 1000, 234), FileMarker("tenant/_data/d=2023-08-04/inevershow.parquet", time()-12 * 1000, 345), FileMarker("tenant/_data/d=2023-08-04/inevershoweither.parquet", time()-12 * 1000, 345)])
+sch = Schema()
+logFile = log.append(s3c, 1, sch.accumulate(["a", "b"], ["VARCHAR", "BIGINT"]), [FileMarker(
+    "tenant/_data/d=2023-08-04/a.parquet", time()-10 * 1000, 123), FileMarker("tenant/_data/d=2023-08-04/b.parquet", time()-11 * 1000, 234), FileMarker("tenant/_data/d=2023-08-04/inevershow.parquet", time()-12 * 1000, 345), FileMarker("tenant/_data/d=2023-08-04/inevershoweither.parquet", time()-12 * 1000, 345)])
 print("created log file", logFile)
 
 # pretend inevershow* merged into something
-logFile = log.append(s3c, 1, Schema().accumulate(["a", "b", "c"], ["VARCHAR", "BIGINT", "BIGINT"]), [
+sch = Schema()
+logFile = log.append(s3c, 1, sch.accumulate(["a", "b", "c"], ["VARCHAR", "BIGINT", "BIGINT"]), [
     FileMarker("tenant/_data/d=2023-08-04/a.parquet", round(time()-10 * 1000), 123),
     FileMarker("tenant/_data/d=2023-08-04/b.parquet", round(time()-11 * 1000), 234),
     FileMarker("tenant/_data/d=2023-08-05/c.parquet", round(time()-5 * 1000), 123),
