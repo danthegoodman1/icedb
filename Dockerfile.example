@@ -9,8 +9,8 @@ RUN pip install -r requirements.txt
 
 # Pre-install duckdb extensions
 RUN mkdir /app/duckdb_exts
-RUN cd /app/duckdb_exts && wget https://extensions.duckdb.org/v0.8.0/linux_amd64/json.duckdb_extension.gz
-RUN cd /app/duckdb_exts && wget https://extensions.duckdb.org/v0.8.0/linux_amd64/httpfs.duckdb_extension.gz
+RUN cd /app/duckdb_exts && wget https://extensions.duckdb.org/v0.8.1/linux_amd64/json.duckdb_extension.gz
+RUN cd /app/duckdb_exts && wget https://extensions.duckdb.org/v0.8.1/linux_amd64/httpfs.duckdb_extension.gz
 RUN cd /app/duckdb_exts && gunzip json.duckdb_extension.gz
 RUN cd /app/duckdb_exts && gunzip httpfs.duckdb_extension.gz
 
