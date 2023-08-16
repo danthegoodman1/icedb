@@ -9,7 +9,7 @@ Run:
 `docker compose up -d`
 
 Then:
-`python api-full.py`
+`python api-flask.py`
 
 In another terminal try inserting with:
 ```
@@ -172,24 +172,11 @@ ice = IceDBv3(
 app = Flask(__name__)
 
 
-def auth_header() -> bool:
-    if "AUTH" not in os.environ:
-        return True
-    authSecret = os.environ["AUTH"]
-    authHeader = request.headers.get('Authorization')
-    try:
-        return authSecret == authHeader.split('Bearer ')[1]
-    except Exception as e:
-        return False
-
-
 icedb_batcher = IceDBBatcher(ice)
 
 
 @app.route('/insert', methods=['POST'])
 def buffer_rows():
-    if not auth_header():
-        return 'invalid auth', 401
     content_type = request.headers.get('Content-Type')
     if content_type == 'application/json':
         j = request.get_json()
@@ -206,9 +193,6 @@ def buffer_rows():
 
 @app.route('/query', methods=['GET'])
 def query_rows():
-    if not auth_header():
-        return 'invalid auth', 401
-
     s1, f1, t1, l1 = IceLogIO("mbp").read_at_max_time(s3c, round(time() * 1000))
     alive_files = list(filter(lambda x: x.tombstone is None, f1))
 

@@ -37,6 +37,8 @@ def delete_all_s3(s3c: S3Client):
             MaxKeys=1000,
             Prefix='/'.join([s3c.s3prefix, '_log'])
         )
+        if 'Contents' not in res:
+            return
         s3_files += res['Contents']
         no_more_files = not res['IsTruncated']
         if not no_more_files:

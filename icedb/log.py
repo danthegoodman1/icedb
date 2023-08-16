@@ -288,6 +288,8 @@ class IceLogIO:
                 MaxKeys=1000,
                 Prefix='/'.join([s3client.s3prefix, '_log'])
             )
+            if 'Contents' not in res:
+                return []
             s3_files += res['Contents']
             no_more_files = not res['IsTruncated']
             if not no_more_files:

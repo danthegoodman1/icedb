@@ -67,7 +67,6 @@ class IceDBv3:
         self.ddb.execute(f"SET s3_secret_access_key='{s3_secret_key}'")
         self.ddb.execute(f"SET s3_endpoint='{s3_endpoint.split('://')[1]}'")
         self.ddb.execute(f"SET s3_use_ssl={'false' if 'http://' in s3_endpoint else 'true'}")
-        print(compression_codec)
         if not isinstance(compression_codec, CompressionCodec):
             raise AttributeError(f"invalid compression codec '{compression_codec}', must be one of type CompressionCodec")
 
