@@ -1,7 +1,9 @@
 """
 An API that ingests events as JSON, batches them on an interval, and inserts.
+It also will merge and tombstone clean on separate intervals.
 
-It also will merge and tombstone clean on separate intervals
+For a single host setup, besides running Flask in debug mode, this is an otherwise
+production-ready setup for the provided events.
 
 Run:
 `docker compose up -d`
