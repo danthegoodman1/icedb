@@ -71,8 +71,9 @@ class IceDBBatcher(object):
         self.is_running = False
         if len(self.rows) > 0:
             try:
-                print("inserting batch!")
+                s = time()
                 self.icedb.insert(self.rows)
+                print("inserted in", time()-s)
                 self.rows = []
             except Exception as e:
                 print("caught exception in _insert")
