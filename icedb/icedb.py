@@ -175,7 +175,7 @@ class IceDBv3:
         desc merge should be fast, working on active partitions. asc merge should be slow and in background,
         slowly fully optimizes partitions over time.
 
-        Returns the number of files merged.
+        Returns new_log, new_file_marker, partition, merged_file_markers, meta
         """
         logio = IceLogIO(self.path_safe_hostname)
         cur_schema, cur_files, cur_tombstones, all_log_files = logio.read_at_max_time(self.s3c, round(time() * 1000))
