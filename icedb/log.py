@@ -101,6 +101,9 @@ class Schema:
     def __repr__(self):
         return self.toJSON()
 
+    def __getitem__(self, item):
+        return self.d[item]
+
 
 class FileMarker:
     path: str
