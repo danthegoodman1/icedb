@@ -104,6 +104,9 @@ class Schema:
     def __getitem__(self, item):
         return self.d[item]
 
+    def __contains__(self, item):
+        return item in self.d
+
 
 class FileMarker:
     path: str
