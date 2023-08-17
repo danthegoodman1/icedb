@@ -144,8 +144,6 @@ print("============= inserting schema-violating events ==================")
 try:
     # First let's check the schemas
     new_schema = ice.get_schema(violating_events)
-    print(new_schema.toJSON())
-    print(schema.toJSON())
     if new_schema.toJSON() is not schema.toJSON():
         # Let's check for conflicts
         check_schema_conflicts(schema, new_schema)
