@@ -112,6 +112,7 @@ schema = Schema()
 
 # First lets check if the schema is different
 new_schema = ice.get_schema(example_events)
+# You'd probably store a hash in practice, so it's smaller in memory
 if new_schema.toJSON() is not schema.toJSON():
     # Let's check if it's safe
     check_schema_conflicts(schema, new_schema)
