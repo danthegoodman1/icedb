@@ -201,7 +201,7 @@ class InsertResource:
 class QueryResource:
     def on_get(self, req, resp):
         resp.content_type = falcon.MEDIA_TEXT
-        s1, f1, t1, l1 = IceLogIO("mbp").read_at_max_time(s3c, round(time() * 1000))
+        s1, f1, t1, l1 = IceLogIO("test").read_at_max_time(s3c, round(time() * 1000))
         alive_files = list(filter(lambda x: x.tombstone is None, f1))
 
         # Create a duckdb instance for querying
@@ -228,7 +228,7 @@ if __name__ == '__main__':
         try:
             httpd.serve_forever() # Serve until process is killed
         except Exception as e:
-            print("hey")
+            print(e)
         finally:
             icedb_batcher.stop()
             delete_all_s3(s3c)
