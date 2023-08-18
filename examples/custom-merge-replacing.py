@@ -138,7 +138,7 @@ print("============= perform query that shows the latest event per user ========
 # Run the query
 s1, f1, t1, l1 = log.read_at_max_time(s3c, round(time() * 1000))
 alive_files = list(filter(lambda x: x.tombstone is None, f1))
-query = ("select user_id, arg_max(event, ts), max(ts), arg_max(properties, ts) "
+query = ("select user_id, arg_max(event, ts), max(ts)::INT8, arg_max(properties, ts) "
          "from read_parquet([{}]) "
          "group by user_id ").format(
     ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))

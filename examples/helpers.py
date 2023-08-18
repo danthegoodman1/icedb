@@ -16,8 +16,8 @@ def get_local_ddb():
     ddb.execute("SET s3_url_style='path'")
     return ddb
 
-def get_local_s3_client():
-    return S3Client(s3prefix="tenant", s3bucket="testbucket", s3region="us-east-1",
+def get_local_s3_client(prefix="example"):
+    return S3Client(s3prefix=prefix, s3bucket="testbucket", s3region="us-east-1",
                       s3endpoint="http://localhost:9000",
                    s3accesskey="user", s3secretkey="password")
 def delete_all_s3(s3c: S3Client):
