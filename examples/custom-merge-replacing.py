@@ -1,12 +1,8 @@
 """
-Shows how you can achieve functionality like ClickHouse's AggregatingMergeTree engine.
-This example keeps track of a running count of events per user.
+Shows how you can achieve functionality like ClickHouse's ReplacingMergeTree engine.
+This example keeps only the latest version of an event for a user.
 
-Counting is just a sum of occurrences, so we simply can create a custom merge query that introduces a new
-column called `cnt` when merged. We then add that column during ingestion with a default of `1`.
-Then we sum that to get the count of rows, constantly reducing the number of rows when merged.
-
-It's important that we apply the same sum to query the data as
+It's important that we apply the same max, arg_max to query the data as
 merging does not guarantee reducing to a single row, as data across parts may not fully merge.
 For end-user querying you could always replace a fake table state-finisher with this as a subquery.
 
@@ -38,11 +34,9 @@ def part_func(row: dict) -> str:
 
 def format_row(row: dict) -> dict:
     """
-    Considering this would be a materialized view on raw incoming data,
-    we prepare it differently than `simple.py`
+    No special preparation required in this example, other than converting the JSON to a string
     """
-    del row['properties'] # drop properties because we don't need it for this table
-    row['cnt'] = 1 # seed the incoming columns with the count to sum
+    row['properties'] = json.dumps(row['properties'])  # convert nested dict to json string
     return row
 
 
@@ -93,6 +87,38 @@ example_events = [
     }
 ]
 
+later_events = [
+    {
+        "ts": 1686176939446,
+        "event": "page_load",
+        "user_id": "user_a",
+        "properties": {
+            "page_name": "Home"
+        },
+    }, {
+        "ts": 1676126230000,
+        "event": "page_load",
+        "user_id": "user_b",
+        "properties": {
+            "page_name": "Home"
+        },
+    }, {
+        "ts": 1686176939667,
+        "event": "page_load",
+        "user_id": "user_a",
+        "properties": {
+            "page_name": "Settings"
+        },
+    }, {
+        "ts": 1686176941446,
+        "event": "page_load",
+        "user_id": "user_a",
+        "properties": {
+            "page_name": "Home"
+        },
+    }
+]
+
 print("============= inserting events ==================")
 inserted = ice.insert(example_events)
 firstInserted = list(map(lambda x: x.path, inserted))
@@ -110,34 +136,36 @@ ddb = get_local_ddb()
 # Run the query
 s1, f1, t1, l1 = log.read_at_max_time(s3c, round(time() * 1000))
 alive_files = list(filter(lambda x: x.tombstone is None, f1))
-query = ("select user_id, event, count(*) as cnt "
+query = ("select user_id, count(*) as cnt "
          "from read_parquet([{}]) "
-         "group by user_id, event, event "
+         "group by user_id, event "
          "order by count(user_id) desc").format(
     ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
 )
 print(ddb.sql(query))
 
-print("============= perform query that shows the running count =============")
+print("============= perform query that shows the latest event per user =============")
+
 
 # Run the query
 s1, f1, t1, l1 = log.read_at_max_time(s3c, round(time() * 1000))
 alive_files = list(filter(lambda x: x.tombstone is None, f1))
-query = ("select user_id, event, sum(cnt) as cnt "
+query = ("select user_id, arg_max(event, ts), max(ts), arg_max(properties, ts) "
          "from read_parquet([{}]) "
-         "group by user_id, event "
-         "order by sum(cnt) desc").format(
+         "group by user_id ").format(
     ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
 )
 print(ddb.sql(query))
 
 print("============= inserting more events ==================")
-inserted = ice.insert(example_events)
+# insert more events that happened later
+inserted = ice.insert(later_events)
 firstInserted = list(map(lambda x: x.path, inserted))
 print('inserted (again)', firstInserted)
 
 print("============= check number of raw rows in data =============")
 
+
 # Run the query
 s1, f1, t1, l1 = log.read_at_max_time(s3c, round(time() * 1000))
 alive_files = list(filter(lambda x: x.tombstone is None, f1))
@@ -149,30 +177,31 @@ query = ("select user_id, count(*) as cnt "
 )
 print(ddb.sql(query))
 
-print("============= perform query that shows the running count =============")
+print("============= perform query that shows the latest event per user =============")
+
 
 # Run the query
 s1, f1, t1, l1 = log.read_at_max_time(s3c, round(time() * 1000))
 alive_files = list(filter(lambda x: x.tombstone is None, f1))
-query = ("select user_id, event, sum(cnt) as cnt "
+query = ("select user_id, arg_max(event, ts), max(ts), arg_max(properties, ts) "
          "from read_parquet([{}]) "
-         "group by user_id, event "
-         "order by sum(cnt) desc").format(
+         "group by user_id ").format(
     ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
 )
 print(ddb.sql(query))
 
 print("============= merging =============")
-# here we reduce the rows to a single sum, and we'll keep the latest ts to know when it last updated
+# here we reduce the rows to a single latest row
 merged_log, new_file, partition, merged_files, meta = ice.merge(custom_merge_query="""
-select sum(cnt) as cnt, max(ts) as ts, user_id, event
+select user_id, arg_max(event, ts) as event, max(ts) as ts, arg_max(properties, ts) as properties
 from source_files
-group by user_id, event
+group by user_id
 """)
 print(f"merged {len(merged_files)} data files from partition {partition}")
 
 print("============= check number of raw rows in data =============")
-print("(see it's smaller than the count now because we merged)")
+print("(see it's smaller than the previous now because we merged)")
+
 
 # Run the query
 s1, f1, t1, l1 = log.read_at_max_time(s3c, round(time() * 1000))
@@ -185,16 +214,17 @@ query = ("select user_id, count(*) as cnt "
 )
 print(ddb.sql(query))
 
-print("============= perform query that shows the running count =============")
+print("============= perform query that shows the latest event per user =============")
 print("(but we still maintained the running count!)")
+
+
 
 # Run the query
 s1, f1, t1, l1 = log.read_at_max_time(s3c, round(time() * 1000))
 alive_files = list(filter(lambda x: x.tombstone is None, f1))
-query = ("select user_id, event, sum(cnt) as cnt "
+query = ("select user_id, arg_max(event, ts), max(ts), arg_max(properties, ts) "
          "from read_parquet([{}]) "
-         "group by user_id, event "
-         "order by sum(cnt) desc").format(
+         "group by user_id ").format(
     ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
 )
 print(ddb.sql(query))

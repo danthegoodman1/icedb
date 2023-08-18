@@ -123,8 +123,7 @@ log = IceLogIO("dan-mbp")
 s1, f1, t1, l1 = log.read_at_max_time(s3c, round(time() * 1000))
 alive_files = list(filter(lambda x: x.tombstone is None, f1))
 
-# Create a duckdb instance for querying
-ddb = get_local_ddb()
+
 
 # Run the query
 query = ("select user_id, count(*), (properties::JSON)->>'page_name' as page "
@@ -147,8 +146,7 @@ log = IceLogIO("dan-mbp")
 s1, f1, t1, l1 = log.read_at_max_time(s3c, round(time() * 1000))
 alive_files = list(filter(lambda x: x.tombstone is None, f1))
 
-# Create a duckdb instance for querying
-ddb = get_local_ddb()
+
 
 # Run the query
 query = ("select user_id, count(*), (properties::JSON)->>'page_name' as page "
