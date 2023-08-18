@@ -1,14 +1,9 @@
 """
-Shows how you can achieve functionality like ClickHouse's AggregatingMergeTree engine.
-This example keeps track of a running count of events per user.
+Shows how to use a second table with a custom merge function as a materialized view
+on a primary table that holds just original rows.
 
-Counting is just a sum of occurrences, so we simply can create a custom merge query that introduces a new
-column called `cnt` when merged. We then add that column during ingestion with a default of `1`.
-Then we sum that to get the count of rows, constantly reducing the number of rows when merged.
-
-It's important that we apply the same sum to query the data as
-merging does not guarantee reducing to a single row, as data across parts may not fully merge.
-For end-user querying you could always replace a fake table state-finisher with this as a subquery.
+This materialized view counts the number of events for a given user. It has separate partition
+and format functions, and a separate s3 client with a different path prefix.
 
 Run:
 `docker compose up -d`
