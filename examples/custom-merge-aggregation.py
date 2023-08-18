@@ -106,9 +106,9 @@ ddb = get_local_ddb()
 # Run the query
 s1, f1, t1, l1 = log.read_at_max_time(s3c, round(time() * 1000))
 alive_files = list(filter(lambda x: x.tombstone is None, f1))
-query = ("select user_id, count(*) as cnt "
+query = ("select user_id, event, count(*) as cnt "
          "from read_parquet([{}]) "
-         "group by user_id "
+         "group by user_id, event, event "
          "order by count(user_id) desc").format(
     ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
 )
@@ -121,9 +121,9 @@ ddb = get_local_ddb()
 # Run the query
 s1, f1, t1, l1 = log.read_at_max_time(s3c, round(time() * 1000))
 alive_files = list(filter(lambda x: x.tombstone is None, f1))
-query = ("select user_id, sum(cnt) as cnt "
+query = ("select user_id, event, sum(cnt) as cnt "
          "from read_parquet([{}]) "
-         "group by user_id "
+         "group by user_id, event "
          "order by sum(cnt) desc").format(
     ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
 )
@@ -144,7 +144,7 @@ s1, f1, t1, l1 = log.read_at_max_time(s3c, round(time() * 1000))
 alive_files = list(filter(lambda x: x.tombstone is None, f1))
 query = ("select user_id, count(*) as cnt "
          "from read_parquet([{}]) "
-         "group by user_id "
+         "group by user_id, event "
          "order by count(user_id) desc").format(
     ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
 )
@@ -157,9 +157,9 @@ ddb = get_local_ddb()
 # Run the query
 s1, f1, t1, l1 = log.read_at_max_time(s3c, round(time() * 1000))
 alive_files = list(filter(lambda x: x.tombstone is None, f1))
-query = ("select user_id, sum(cnt) as cnt "
+query = ("select user_id, event, sum(cnt) as cnt "
          "from read_parquet([{}]) "
-         "group by user_id "
+         "group by user_id, event "
          "order by sum(cnt) desc").format(
     ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
 )
@@ -168,9 +168,9 @@ print(ddb.sql(query))
 print("============= merging =============")
 # here we reduce the rows to a single sum, and we'll keep the latest ts to know when it last updated
 merged_log, new_file, partition, merged_files, meta = ice.merge(custom_merge_query="""
-select sum(cnt) as cnt, max(ts) as ts, user_id
+select sum(cnt) as cnt, max(ts) as ts, user_id, event
 from source_files
-group by user_id
+group by user_id, event
 """)
 print(f"merged {len(merged_files)} data files from partition {partition}")
 
@@ -184,7 +184,7 @@ s1, f1, t1, l1 = log.read_at_max_time(s3c, round(time() * 1000))
 alive_files = list(filter(lambda x: x.tombstone is None, f1))
 query = ("select user_id, count(*) as cnt "
          "from read_parquet([{}]) "
-         "group by user_id "
+         "group by user_id, event "
          "order by count(user_id) desc").format(
     ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
 )
@@ -198,9 +198,9 @@ ddb = get_local_ddb()
 # Run the query
 s1, f1, t1, l1 = log.read_at_max_time(s3c, round(time() * 1000))
 alive_files = list(filter(lambda x: x.tombstone is None, f1))
-query = ("select user_id, sum(cnt) as cnt "
+query = ("select user_id, event, sum(cnt) as cnt "
          "from read_parquet([{}]) "
-         "group by user_id "
+         "group by user_id, event "
          "order by sum(cnt) desc").format(
     ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
 )
