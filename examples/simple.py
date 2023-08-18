@@ -11,7 +11,7 @@ from icedb.log import IceLogIO
 from datetime import datetime
 import json
 from time import time
-from helpers import get_local_ddb, get_local_s3_client, delete_all_s3
+from helpers import get_local_ddb, get_local_s3_client, delete_all_s3, get_ice
 
 s3c = get_local_s3_client()
 
@@ -33,19 +33,7 @@ def format_row(row: dict) -> dict:
     return row
 
 
-ice = IceDBv3(
-    part_func,
-    ['event', 'ts'], # We are doing to sort by event, then timestamp of the event within the data part
-    format_row,
-    "us-east-1", # This is all local minio stuff
-    "user",
-    "password",
-    "http://localhost:9000",
-    s3c,
-    "dan-mbp",
-    True, # needed for local minio
-    compression_codec=CompressionCodec.ZSTD # Let's force a higher compression level, default is SNAPPY
-)
+ice = get_ice(s3c, part_func, format_row)
 
 # Some fake events that we are ingesting
 example_events = [

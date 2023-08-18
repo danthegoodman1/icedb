@@ -1,5 +1,6 @@
 import duckdb
 
+from icedb import IceDBv3, CompressionCodec
 from icedb.log import S3Client
 
 
@@ -49,3 +50,18 @@ def delete_all_s3(s3c: S3Client):
             Key=file['Key']
         )
     print(f"deleted {len(s3_files)} files")
+
+def get_ice(s3_client, part_func, format_row):
+    return IceDBv3(
+    part_func,
+    ['event', 'ts'],  # We are doing to sort by event, then timestamp of the event within the data part
+    format_row,
+    "us-east-1",  # This is all local minio stuff
+    "user",
+    "password",
+    "http://localhost:9000",
+    s3_client,
+    "dan-mbp",
+    True,  # needed for local minio
+    compression_codec=CompressionCodec.ZSTD  # Let's force a higher compression level, default is SNAPPY
+)
