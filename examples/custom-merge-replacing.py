@@ -10,7 +10,7 @@ Run:
 `docker compose up -d`
 
 Then:
-`python custom-merge-aggregation.py`
+`python custom-merge-replacing.py`
 """
 
 from icedb.icedb import IceDBv3, CompressionCodec
