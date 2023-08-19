@@ -149,7 +149,8 @@ IceDB offers many novel features out of the box that comparable data warehouses 
 
 BigQuery offers a great model of only paying for S3-price storage when not querying, and being able to summon 
 massive resources to fulfill queries when requested. The issues with BigQuery (and similar like Athena) is that:
-- They are overly expensive at $5/TB processed
+- They are egregiously expensive at $5/TB processed
+- Charge on uncompressed data storage (and they reserve compressed billing for their largest customers)
 - They are limited to their respective cloud providers
 - Closed source, no way to self-host or contribute
 - Only one available query engine
