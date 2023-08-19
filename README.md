@@ -154,6 +154,8 @@ massive resources to fulfill queries when requested. The issues with BigQuery (a
 - They are limited to their respective cloud providers
 - Closed source, no way to self-host or contribute
 - Only one available query engine
+- Driving a nail with a sledgehammer: no way to adjust query resources when reading smaller amounts of data
+- Show query startup time
 
 For example, queries on data that might cost $6 on BigQuery would only be around ~$0.10 running IceDB and 
 dynamically provisioning a CLickHouse cluster on fly.io to respond to queries. That's a cost reduction of 60x 
