@@ -238,6 +238,29 @@ single event over time, then you should create two tables:
 - A table with a partition format of `d={YYYY-MM-DD}` and a sort of `event_id,timestamp` for finding events over time 
   (dashboards and insights)
 
+### Schema validation before insert
+
+Reading the log and/or data will fail if there are conflicting schemas across files. IceDB accepts missing and new 
+columns across files, but rejects a column changing data types.
+
+The best way to handle this across multiple ingestion workers that might insert into the same table is to cache (a 
+hash of) the 
+schema in memory, and when a schema change for a given table is detected perform a serializable `SELECT FOR UPDATE` 
+level isolation lock on some central schema store. You can then determine whether the schema change is allowed (or 
+already happened), and update the remote schema definition to add the new columns as needed.
+
+If the schema change is not allowed (a column changed data type), you can either attempt to solve it (e.g. change a 
+BIGINT to a DOUBLE/DECIMAL), drop the offending rows, or quarantine them in a special `{table name}_quarantine` 
+table and notify users of the violating rows for manual review.
+
+You could also require users pre-define schemas, and push updates to ingestion workers, or do a similar check 
+sequence when one is detected (omitting the functionality of updating the remote schema from the ingestion worker).
+
+Columns will always show as `NULLABLE` in the schema, however the only columns that should never be null are the 
+ones required to determine the partition (unless you have defaults on those columns).
+
+See [the example here](examples/verify-schema.py)
+
 ## Usage
 
 ```
