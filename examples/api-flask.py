@@ -5,6 +5,12 @@ It also will merge and tombstone clean on separate intervals.
 For a single host setup, besides running Flask in debug mode, this is an otherwise
 production-ready setup for the provided events.
 
+Note that this run its own merge and tombstone cleaning, which is NOT SAFE for multi-node setups without distributed
+locking.
+
+This example also provides async inserting via an in-memory buffer that flushes every 3 seconds. You must be able to
+tolerate data loss if the node dies, otherwise use something like RedPanda for buffering inserts.
+
 Run:
 `docker compose up -d`
 
