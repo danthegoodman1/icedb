@@ -259,7 +259,7 @@ sequence when one is detected (omitting the functionality of updating the remote
 Columns will always show as `NULLABLE` in the schema, however the only columns that should never be null are the 
 ones required to determine the partition (unless you have defaults on those columns).
 
-See [the example here](examples/verify-schema.py)
+See a simple [example here](examples/verify-schema.py) on verifying the schema before inserting.
 
 ## Usage
 
