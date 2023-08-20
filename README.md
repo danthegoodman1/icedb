@@ -139,7 +139,7 @@ validation before insert, and more.
 - API using [flask](examples/api-flask.py) and [falcon](examples/api-falcon.py)
 - [Segment webhook sink](examples/segment-webhook-sink.py)
 
-## Comparisons to other data warehouses
+## Comparisons to other systems
 
 IceDB was made to fill the gap between solutions like ClickHouse and BigQuery, solving a stronger balance between
 decoupled storage (data and metadata) and compute, easily self-hosted, open source, easily extensible and flexible,  
