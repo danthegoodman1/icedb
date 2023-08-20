@@ -26,15 +26,20 @@ It is also ideal for multi-tenant workloads where your end users want to directl
     * [Why not ClickHouse, TimescaleDB, RedShift, etc?](#why-not-clickhouse-timescaledb-redshift-etc)
     * [Why not the Spark/Flink/EMR ecosystem](#why-not-the-sparkflinkemr-ecosystem)
     * [When not to use IceDB](#when-not-to-use-icedb)
+  * [Tips before you dive in](#tips-before-you-dive-in)
+    * [Insert in large batches](#insert-in-large-batches)
+    * [Merge and Tombstone clean often](#merge-and-tombstone-clean-often)
+    * [Large partitions, sort your data well!](#large-partitions-sort-your-data-well)
+    * [Schema validation before insert](#schema-validation-before-insert)
   * [Usage](#usage)
-    * [`partition_strategy`](#partitionstrategy)
-    * [`sort_order`](#sortorder)
-    * [`format_row`](#formatrow)
+    * [Partition function (`part_func`)](#partition-function-partfunc)
+    * [Sorting Order (`sort_order`)](#sorting-order-sortorder)
+    * [Row format function (`format_row`)](#row-format-function-formatrow)
     * [`unique_row_key`](#uniquerowkey)
   * [Pre-installing DuckDB extensions](#pre-installing-duckdb-extensions)
   * [Merging](#merging)
   * [Concurrent merges](#concurrent-merges)
-  * [Tombstone cleanuip](#tombstone-cleanuip)
+  * [Tombstone cleanup](#tombstone-cleanup)
   * [Custom Merge Query (ADVANCED USAGE)](#custom-merge-query-advanced-usage)
     * [Handling `_row_id`](#handling-rowid)
       * [Deduplicating Data on Merge](#deduplicating-data-on-merge)
@@ -276,9 +281,14 @@ from icedb import IceDBv3
 ice = IceDBv3(...)
 ```
 
-### `partition_strategy`
+### Partition function (`part_func`)
 
-Function that takes in an `dict`, and returns a `str`. How the partition is determined from the row dict.
+Function that takes in an `dict`, and returns a `str`. How the partition is determined from the row dict. This 
+function is run for every row, and should not modify the original dict.
+
+While not required, by formatting this in Hive format many query engines can read these from the file path and use 
+them as additional query filters. DuckDB can do this natively with `read_parquet([...], hive_partition=1)`, and with 
+ClickHouse you can write something like `extract(_path, 'u=([^\s/]+)') AS user_id, extract(_path, 'd=([0-9-]+)') AS date`
 
 Example:
 
@@ -286,30 +296,41 @@ Example:
 from datetime import datetime
 from icedb import IceDBv3
 
-def part_strat(row: dict) -> str:
-    rowTime = datetime.utcfromtimestamp(row['timestamp']/1000) # timestamp is in ms
-    return 'y={}/m={}/d={}'.format('{}'.format(rowTime.year).zfill(4), '{}'.format(rowTime.month).zfill(2), '{}'.format(rowTime.day).zfill(2))
+def part_func(row: dict) -> str:
+    """
+    We'll partition by user_id, date
+    Example: u=user_a/d=2023-08-19
+    """
+    row_time = datetime.utcfromtimestamp(row['ts'] / 1000)
+    part = f"u={row['user_id']}/d={row_time.strftime('%Y-%m-%d')}"
+    return part
 
 ice = IceDBv3(partition_strategy=part_strat, sort_order=['event', 'timestamp'])
 ```
 
-### `sort_order`
+### Sorting Order (`sort_order`)
 
-Defines the order of top-level keys in the row dict that will be used for sorting inside of the parquet file.
+Defines the order of top-level keys in the row dict that will be used for sorting inside the parquet file. This 
+should reflect the same order that you filter on for queries, as this directly impacts performance. Generally, you 
+should start with the lowest cardinality column, and increase in cardinality in the list
 
-Example:
+Example sorting by event, then timestamp:
 
 ```python
 ['event', 'timestamp']
 ```
 
-### `format_row`
+This will allow us to efficiently query for events over time as we can pick a specific event, then filter the time 
+range while reducing the amount of irrelevant rows read.
 
-Format row is the function that will determine how a row is finally formatted to be inserted. This is where you would want to flatten JSON so that the data is not corrupted. This is called just before inserting into a parquet file.
+### Row format function (`format_row`)
+
+The function that will determine how a row is finally formatted just before being inserted into parquet.
+For example, you might want to stringify some JSON. 
 
 **It's crucial that you flatten the row and do not have nested objects**
 
-Example:
+Example handling JSON properties:
 
 ```python
 import json
@@ -333,7 +354,8 @@ def format_row(row: dict) -> dict:
 
 ### `unique_row_key`
 
-If provided, will use a top-level row key as the `_row_id` for deduplication. If not provided a UUID will be generated.
+If provided, will use a top-level row key as the `_row_id` for deduplication instead of generating a UUID per-row. 
+Use this if your rows already have some unique ID generated.
 
 ## Pre-installing DuckDB extensions
 
