@@ -139,7 +139,7 @@ validation before insert, and more.
 - API using [flask](examples/api-flask.py) and [falcon](examples/api-falcon.py)
 - [Segment webhook sink](examples/segment-webhook-sink.py)
 
-## Comparisons
+## Comparisons to other data warehouses
 
 IceDB was made to fill the gap between solutions like ClickHouse and BigQuery, solving a stronger balance between
 decoupled storage (data and metadata) and compute, easily self-hosted, open source, easily extensible and flexible,  
@@ -183,7 +183,7 @@ flexibility, and performance far outweigh the small management overhead.
 To get the best performance in this model, combine with the
 [IceDB S3 Proxy](https://github.com/danthegoodman1/IceDBS3Proxy)
 
-### Why not ClickHouse, TimescaleDB, RedShift, etc?
+### Why not ClickHouse, TimescaleDB, RedShift, etc.?
 
 We love ClickHouse, in fact it's our go-to query engine for IceDB in the form of
 [BigHouse](https://github.com/danthegoodman1/bighouse) (dynamically provisioned ClickHouse clusters)
