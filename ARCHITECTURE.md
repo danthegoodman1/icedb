@@ -100,3 +100,12 @@ The second level of coordination with a second exclusive lock that is needed is 
 When tombstone cleanup occurs, the entire state of the log is read. Any tombstones that are found older than the `tmb_grace_sec` are deleted from S3.
 
 When the cleaning process finds a log file with tombstones, it first deletes those files from S3. If that is successful (not found errors being idempotent passes), then the log file is replaced with the same contents, minus the tombstones and any file markers that had those tombstone references.
+
+## Concurrent Merge and Tombstone cleanup
+
+If you have multiple hosts running merge and tombstone cleanup, then you will need to coordinate them with a system 
+like etcd, Zookeeper, Postgres, CockroachDB, or anything that provide serializable transactions or native exclusive 
+locking.
+
+Tombstone cleanup would simply result in redundant actions which can reduce performance, however concurrent merges 
+on the same parts may result in duplicate data, which must be avoided.

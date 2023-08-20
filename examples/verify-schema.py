@@ -1,4 +1,11 @@
 """
+This example verifies the schema before inserting to ensure that the data does not get corrupted.
+
+In practice, you will want to cache the schema in the ingestion workers and when ever there is a change, lookup from
+some central data store that supports serializable transactions (Postgres, CockroachDB, FoundationDB, etc.) where you
+can lock the schema row and update it if the new schema does not break, otherwise you should drop and/or quarantine
+the violating rows for manual review.
+
 Run:
 `docker compose up -d`
 

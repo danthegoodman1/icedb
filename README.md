@@ -1,34 +1,50 @@
 # IceDB
 
-An in-process parquet merge engine for S3. Inserts and merges powered by Python and DuckDB, querying portable to any lang that can query Postgres, and any DB/lang that can parse parquet.
+An in-process parquet merge engine for S3. Inserts, merges, and tombstone cleanup powered by Python and DuckDB. 
+IceDB runs stateless with a log in S3, meaning that you only pay for storage and compute during operations, enabling 
+true serverless analytical processing.
 
-IceDB enables serverless OLAP/data lake hybrid in-process database framework optimized for event-based data. It combines DuckDB, Parquet files, and S3 storage to fully decouple storage and compute, while only paying for compute during query execution time. It also decouples from both the database and programming language, so you can use IceDB in DuckDB, Pandas (Python), a Golang binary bound to ClickHouse, and more.
+The IceDB log keeps track of alive data files, as well as the running schema which is updated via insertion. It does 
+so in an open and easily readable format to allow for any language or framework to parse the icedb log and read the 
+alive files. Query engines such as DuckDB, ClickHouse, CHDB, Datafusion, Pandas, or custom parquet readers in any 
+  language can easily read IceDB data in hundreds milliseconds, 
+especially when combined with the [IceDB S3 Proxy](https://github.com/danthegoodman1/IceDBS3Proxy). See more in the 
+[ARCHITECTURE.md](ARCHITECTURE.md)
 
-_Massive WIP_
+IceDB is targeted at data warehouse use cases to replace systems like BigQuery, Athena, and Snowflake, but with 
+clever data design can also replace provisioned solutions such as a ClickHouse cluster, Redshift, and more.
 
-See https://blog.danthegoodman.com/icedb-v2
+It is also ideal for multi-tenant workloads where your end users want to directly submit SQL
 
 <!-- TOC -->
 * [IceDB](#icedb)
   * [Performance test](#performance-test)
-  * [KNOWN GOTCHAS](#known-gotchas)
   * [Examples](#examples)
+  * [Comparisons](#comparisons)
+    * [Why IceDB?](#why-icedb)
+    * [Why not BigQuery or Athena?](#why-not-bigquery-or-athena)
+    * [Why not ClickHouse, TimescaleDB, RedShift, etc?](#why-not-clickhouse-timescaledb-redshift-etc)
+    * [Why not the Spark/Flink/EMR ecosystem](#why-not-the-sparkflinkemr-ecosystem)
+    * [When not to use IceDB](#when-not-to-use-icedb)
+  * [Tips before you dive in](#tips-before-you-dive-in)
+    * [Insert in large batches](#insert-in-large-batches)
+    * [Merge and Tombstone clean often](#merge-and-tombstone-clean-often)
+    * [Large partitions, sort your data well!](#large-partitions-sort-your-data-well)
+    * [Schema validation before insert](#schema-validation-before-insert)
   * [Usage](#usage)
-    * [`partitionStrategy`](#partitionstrategy)
-    * [`sortOrder`](#sortorder)
-    * [`formatRow`](#formatrow)
+    * [Partition function (`part_func`)](#partition-function-partfunc)
+    * [Sorting Order (`sort_order`)](#sorting-order-sortorder)
+    * [Row format function (`format_row`)](#row-format-function-formatrow)
     * [`unique_row_key`](#uniquerowkey)
-  * [Pre-installing extensions](#pre-installing-extensions)
+  * [Pre-installing DuckDB extensions](#pre-installing-duckdb-extensions)
   * [Merging](#merging)
   * [Concurrent merges](#concurrent-merges)
-  * [Cleaning Merged Files](#cleaning-merged-files)
+  * [Tombstone cleanup](#tombstone-cleanup)
   * [Custom Merge Query (ADVANCED USAGE)](#custom-merge-query-advanced-usage)
     * [Handling `_row_id`](#handling-rowid)
       * [Deduplicating Data on Merge](#deduplicating-data-on-merge)
       * [Replacing Data on Merge](#replacing-data-on-merge)
       * [Aggregating Data on Merge](#aggregating-data-on-merge)
-  * [Multiple Tables](#multiple-tables)
-  * [Meta Store Schema](#meta-store-schema)
 <!-- TOC -->
 
 ## Performance test
@@ -105,19 +121,153 @@ enough, or your partition scheme is far too granular.
 
 The stability of my laptop struggled when doing the thousands test, so I only showed where I could consistently get to.
 
-## KNOWN GOTCHAS
-
-There is a bug in duckdb right now where `read_parquet` will fire a table macro twice, and show the file twice when listing them, but this doesn't affect actual query results: https://github.com/duckdb/duckdb/issues/7897
-
-In the meantime, consider this when listing files in SQL, and add some caching in your function if needed. See a simple method in ./examples/custom-merge.py
-
 ## Examples
 
-- [Simple DuckDB query example](examples/simple.py)
-- [Custom Merge Query](examples/custom-merge.py)
-- [Query with a Golang binary bound to ClickHouse](examples/clickhouse.md) - Shows the power of both portability of IceDB in both language and query execution.
-- [Segment Sink Example](examples/segment-sink.py) - getting events directly from a Customer Data Platform like Segment.com
-- [Full production-ready Segment sink API with multiple table support, pre-installed extensions, Dockerfile](https://github.com/danthegoodman1/IceDBSegment)
+See the [examples](examples) folder for many examples like Materialized Views, custom merge queries, schema 
+validation before insert, and more.
+
+- [Simple example](examples/simple.py)
+- [Materialized View example](examples/materialized-view.py)
+- Custom merge queries [aggregation](examples/custom-merge-aggregation.py) and [replacing](examples/custom-merge-replacing.py)
+- [Verify schema before insert](examples/verify-schema.py)
+- API using [flask](examples/api-flask.py) and [falcon](examples/api-falcon.py)
+- [Segment webhook sink](examples/segment-webhook-sink.py)
+
+## Comparisons
+
+IceDB was made to fill the gap between solutions like ClickHouse and BigQuery.
+
+### Why IceDB?
+
+IceDB offers many novel features out of the box that comparable data warehouses and OLAP DBs don't:
+
+- Native multi-tenancy with prefix control and the [IceDB S3 Proxy](https://github.com/danthegoodman1/IceDBS3Proxy), 
+  including letting end-users write their own SQL queries
+- True separation of data storage, metadata storage, and compute with shared storage (S3)
+- Multiple options for query processing (DuckDB, ClickHouse, CHDB, Datafusion, Pandas, custom parquet readers in any 
+  language)
+- Open data formats for both the log and data storage
+- Extreme flexibility in functionality due to being in-process and easily manipulated for features like materialized 
+  views, AggregatingMergeTree and ReplacingMergeTree-like functionality
+
+### Why not BigQuery or Athena?
+
+BigQuery offers a great model of only paying for S3-price storage when not querying, and being able to summon 
+massive resources to fulfill queries when requested. The issues with BigQuery (and similar like Athena) is that:
+- They are egregiously expensive at $5/TB processed
+- Charge on uncompressed data storage (and they reserve compressed billing for their largest customers)
+- They are limited to their respective cloud providers
+- Closed source, no way to self-host or contribute
+- Only one available query engine
+- Driving a nail with a sledgehammer: no way to adjust query resources when reading smaller amounts of data
+- Show query startup time
+
+For example, queries on data that might cost $6 on BigQuery would only be around ~$0.10 running IceDB and 
+dynamically provisioning a CLickHouse cluster on fly.io to respond to queries. That's a cost reduction of 60x 
+without sacrificing performance.
+
+While IceDB does require that you manage some logic like merging and tombstone cleaning yourself, the savings, 
+flexibility, and performance far outweigh the small management overhead.
+
+To get the best performance in this model, combine with the
+[IceDB S3 Proxy](https://github.com/danthegoodman1/IceDBS3Proxy)
+
+### Why not ClickHouse, TimescaleDB, RedShift, etc?
+
+We love ClickHouse, in fact it's our go-to query engine for IceDB in the form of
+[BigHouse](https://github.com/danthegoodman1/bighouse) (dynamically provisioned ClickHouse clusters)
+
+The issue with these solutions are the tight coupling between storage, metadata, and compute. The lack of elasticity 
+in these systems require that
+have the resources to answer massive queries idle and ready, while also requiring massive resources for inserting 
+when large queries are only occasional (but need to be answered quickly).
+
+IceDB allows for ingestion, merging, tombstone cleaning, and querying all in a serverless model due to compute being 
+effectively stateless, with all state being managed on S3 (plus some coordination if needed).
+
+Ingestion workers can be summoned per-request, merging and tombstone cleaning can be on timers, and querying can 
+provision resources dynamically based on how much data needs to be read.
+
+### Why not the Spark/Flink/EMR ecosystem
+
+Beyond the comical management overhead, performance is shown to be inferior to other solutions, and the flexibility 
+of these systems is paid 10-fold over in complexity.
+
+### When not to use IceDB
+
+- If you need answers in <100ms, consider ClickHouse or Tinybird (well-designed materialized views in IceDB can provide 
+  this 
+  performance level as well)
+- If you need tight integrations with cloud-provider-specific integrations and can't spare writing a little extra 
+  code, consider BigQuery and Athena
+- If your network cards are not very fast, consider ClickHouse
+- If you can't access an S3 service from within the same region/datacenter, and are not able to host something like 
+  minio yourself, consider ClickHouse
+- If you need something 100% fully managed, depending on your needs and budget consider managed ClickHouse 
+  (Altinity, DoubleCloud, ClickHouse Cloud, Aiven), Tinybird, BigQuery, or Athena
+
+## Tips before you dive in
+
+### Insert in large batches
+
+Performance degrades linearly with more files because the log gets larger, and the number of parquet files in S3 to 
+be read (or even just listed) grows. Optimal performance is obtained by inserting as infrequently as possible. For 
+example, you might write records to RedPanda first, and have workers that insert in large batches every 3 seconds. 
+Or maybe you buffer in memory first from your API nodes, and flush that batch to disk every 3 seconds
+([example](examples/api-flask.py))
+
+### Merge and Tombstone clean often
+
+Merging increases the performance of queries by reducing the number of files that data is spread across. Merging 
+combines files within the same partition. Parquet natively providers efficient indexing to ensure that selective 
+queries remain performant, even if you are only selecting thousands of rows out of millions from a single parquet file.
+
+Tombstone cleaning removes dead data and log files from S3, and also removes the tracked tombstones in the active 
+log files. This improves the performance of queries by making the log faster to read, but does not impact how 
+quickly the query engine can read the data once it knows the list of parquet files to read.
+
+The more frequently you insert batches, the more frequently you need to merge. And the more frequently you merge, 
+the more frequently you need to clean tombstones in the log and data files.
+
+### Large partitions, sort your data well!
+
+Do not make too many partitions, they do very little to improve query performance, but too many partitions will 
+greatly impair query performance.
+
+The best thing you can do to improve query performance is to sort your data in the same way you'd query it, and 
+write it to multiple tables if you need multiple access patterns to your data.
+
+For example, if you ingest events from a webapp like Mixpanel and need to be able to query events by a given user over 
+time, and a 
+single event over time, then you should create two tables:
+
+- A table with a partition format `uid={user_id}` and a sort of `timestamp,event_id` for listing a user's events 
+  over time (user-view)
+- A table with a partition format of `d={YYYY-MM-DD}` and a sort of `event_id,timestamp` for finding events over time 
+  (dashboards and insights)
+
+### Schema validation before insert
+
+Reading the log and/or data will fail if there are conflicting schemas across files. IceDB accepts missing and new 
+columns across files, but rejects a column changing data types.
+
+The best way to handle this across multiple ingestion workers that might insert into the same table is to cache (a 
+hash of) the 
+schema in memory, and when a schema change for a given table is detected perform a serializable `SELECT FOR UPDATE` 
+level isolation lock on some central schema store. You can then determine whether the schema change is allowed (or 
+already happened), and update the remote schema definition to add the new columns as needed.
+
+If the schema change is not allowed (a column changed data type), you can either attempt to solve it (e.g. change a 
+BIGINT to a DOUBLE/DECIMAL), drop the offending rows, or quarantine them in a special `{table name}_quarantine` 
+table and notify users of the violating rows for manual review.
+
+You could also require users pre-define schemas, and push updates to ingestion workers, or do a similar check 
+sequence when one is detected (omitting the functionality of updating the remote schema from the ingestion worker).
+
+Columns will always show as `NULLABLE` in the schema, however the only columns that should never be null are the 
+ones required to determine the partition (unless you have defaults on those columns).
+
+See a simple [example here](examples/verify-schema.py) on verifying the schema before inserting.
 
 ## Usage
 
@@ -126,78 +276,114 @@ pip install git+https://github.com/danthegoodman1/icedb
 ```
 
 ```python
-from icedb import IceDB
+from icedb import IceDBv3
 
-ice = IceDB(...)
+ice = IceDBv3(...)
 ```
 
-### `partitionStrategy`
+### Partition function (`part_func`)
 
-Function that takes in an `dict`, and returns a `str`. How the partition is determined from the row dict.
+Function that takes in an `dict`, and returns a `str`. How the partition is determined from the row dict. This 
+function is run for every row, and should not modify the original dict.
+
+While not required, by formatting this in Hive format many query engines can read these from the file path and use 
+them as additional query filters. DuckDB can do this natively with `read_parquet([...], hive_partition=1)`, and with 
+ClickHouse you can write something like `extract(_path, 'u=([^\s/]+)') AS user_id, extract(_path, 'd=([0-9-]+)') AS date`
 
 Example:
 
 ```python
 from datetime import datetime
+from icedb import IceDBv3
 
-def partStrat(row: dict) -> str:
-    rowTime = datetime.utcfromtimestamp(row['timestamp']/1000) # timestamp is in ms
-    return 'y={}/m={}/d={}'.format('{}'.format(rowTime.year).zfill(4), '{}'.format(rowTime.month).zfill(2), '{}'.format(rowTime.day).zfill(2))
+def part_func(row: dict) -> str:
+    """
+    We'll partition by user_id, date
+    Example: u=user_a/d=2023-08-19
+    """
+    row_time = datetime.utcfromtimestamp(row['ts'] / 1000)
+    part = f"u={row['user_id']}/d={row_time.strftime('%Y-%m-%d')}"
+    return part
 
-ice = IceDB(partitionStrategy=partStrat, sortOrder=['event', 'timestamp'])
+ice = IceDBv3(partition_strategy=part_strat, sort_order=['event', 'timestamp'])
 ```
 
-### `sortOrder`
+### Sorting Order (`sort_order`)
 
-Defines the order of top-level keys in the row dict that will be used for sorting inside of the parquet file.
+Defines the order of top-level keys in the row dict that will be used for sorting inside the parquet file. This 
+should reflect the same order that you filter on for queries, as this directly impacts performance. Generally, you 
+should start with the lowest cardinality column, and increase in cardinality in the list
 
-Example:
+Example sorting by event, then timestamp:
 
 ```python
 ['event', 'timestamp']
 ```
 
-### `formatRow`
+This will allow us to efficiently query for events over time as we can pick a specific event, then filter the time 
+range while reducing the amount of irrelevant rows read.
 
-Format row is the function that will determine how a row is finally formatted to be inserted. This is where you would want to flatten JSON so that the data is not corrupted. This is called just before inserting into a parquet file.
+### Row format function (`format_row`)
+
+The function that will determine how a row is finally formatted just before being inserted into parquet.
+For example, you might want to stringify some JSON. 
 
 **It's crucial that you flatten the row and do not have nested objects**
 
-Example:
+Example handling JSON properties:
 
 ```python
+import json
+
 def format_row(row: dict) -> dict:
     row['properties'] = json.dumps(row['properties']) # convert nested dict to json string
     return row
 ```
 
+For something like a Materialized View that keeps a running count, we need to seed the row with an initial count, so 
+we can sum that count in the custom merge query (and data queries) later. See [this example](examples/custom-merge-aggregation.py).
+
+```python
+import json
+
+def format_row(row: dict) -> dict:
+    row['properties'] = json.dumps(row['properties']) # convert nested dict to json string
+    row['cnt'] = 1 # seed the count
+    return row
+```
+
 ### `unique_row_key`
 
-If provided, will use a top-level row key as the `_row_id` for deduplication. If not provided a UUID will be generated.
+If provided, will use a top-level row key as the `_row_id` for deduplication instead of generating a UUID per-row. 
+Use this if your rows already have some unique ID generated.
 
-## Pre-installing extensions
+## Pre-installing DuckDB extensions
 
 DuckDB uses the `httpfs` extension. See how to pre-install it into your runtime here: https://duckdb.org/docs/extensions/overview.html#downloading-extensions-directly-from-s3
 
 and see the `extension_directory` setting: https://duckdb.org/docs/sql/configuration.html#:~:text=PHYSICAL_ONLY-,extension_directory,-Set%20the%20directory with the default of `$HOME/.duckdb/`
 
+You may see an example of this in the [example Dockerfile](Dockerfile.example).
+
 ## Merging
 
 Merging takes a `max_file_size`. This is the max file size that is considered for merging, as well as a threshold for when merging will start. This means that the actual final merged file size (by logic) is in theory 2*max_file_size, however due to parquet compression it hardly ever gets that close.
 
-For example if a max size is 10MB, and during a merge we have a 9MB file, then come across another 9MB file, then the threshold of 10MB is exceeded (18MB total) and those files will be merged. However with compression that final file might be only 12MB in size.
+For example if a max size is 10MB, and during a merge we have a 9MB file, then come across another 9MB file, then 
+the threshold of 10MB is exceeded (18MB total) and those files will be merged. However, with compression that final file might be only 12MB in size.
 
 ## Concurrent merges
 
 Concurrent merges won't break anything due to the isolation level employed in the meta store transactions, however there is a chance that competing merges can result in conflicts, and when one is detected the conflicting merge will exit. Instead, you can choose to immediately call `merge` again (or with a short, like 5 seconds) if you successfully merged files to ensure that lock contention stays low.
 
-However concurrent merges in opposite directions is highly suggested.
+However, concurrent merges in opposite directions is highly suggested.
 
-For example in the use case where a partition might look like `y=YYYY/m=MM/d=DD` then you should merge in `DESC` order frequently (say once every 15 seconds). This will keep the hot partitions more optimized so that queries on current data don't get too slow. These should have smaller file count and size requirements so they can be fast, and reduce the lock time of files in the meta store.
+For example in the use case where a partition might look like `y=YYYY/m=MM/d=DD` then you should merge in `DESC` 
+order frequently (say once every 15 seconds). This will keep the hot partitions more optimized so that queries on current data don't get too slow. These should have smaller file count and size requirements, so they can be fast, and reduce the lock time of files in the meta store.
 
 You should run a second, slower merge internal in `ASC` order that fully optimizes older partitions. These merges can be much large in file size and count, as they are less likely to conflict with active queries. Say this is run every 5 or 10 minutes.
 
-## Cleaning Merged Files
+## Tombstone cleanup
 
 Using the `remove_inactive_parts` method, you can delete files with some minimum age that are no longer active. This helps keep S3 storage down.
 
@@ -282,36 +468,3 @@ This data set will reduce the number of rows over time by aggregating them by `u
 Counting is a bit trickier because you would normally have to pivot from `count()` when merging a never-before-merged file to `sum()` with files that have been merged at least once to account for the new number. The trick to this is instead adding a `counter` column with value `1` every time you insert a new row.
 
 Then, when merging, you simply `sum(counter) as counter` to keep a count of the number of rows that match a condition.
-
-## Multiple Tables
-
-Multiple tables can be achieved through a combination of the `partition_prefix` parameter in `IceDB.merge_files`, as well as partitioning via a Hive partitioning key such as:
-
-```
-table={}/y={}/m={}/d={}
-```
-
-You can then easily parameterize partition ranges like:
-
-```python
-def get_partition_range(table: str, syear: int, smonth: int, sday: int, eyear: int, emonth: int, eday: int) -> list[str]:
-    return ['table={}/y={}/m={}/d={}'.format(table, '{}'.format(syear).zfill(4), '{}'.format(smonth).zfill(2), '{}'.format(sday).zfill(2)),
-            'table={}/y={}/m={}/d={}'.format(table, '{}'.format(eyear).zfill(4), '{}'.format(emonth).zfill(2), '{}'.format(eday).zfill(2))]
-```
-
-## Meta Store Schema
-
-The meta store uses the following DB table:
-```sql
-create table if not exists known_files (
-    partition TEXT NOT NULL,
-    filename TEXT NOT NULL,
-    filesize INT8 NOT NULL,
-    active BOOLEAN NOT NULL DEFAULT TRUE,
-    _created TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    _updated TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    PRIMARY KEY(active, partition, filename)
-)
-```
-
-This means that you can simply query this table from other languages as shown in the [Golang example](ch/user_scripts/main.go), and [query it from other databases like ClickHouse](examples/clickhouse.md)
