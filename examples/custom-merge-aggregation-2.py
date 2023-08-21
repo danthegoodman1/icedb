@@ -39,7 +39,7 @@ def part_func(row: dict) -> str:
 def format_row(row: dict) -> dict:
     """
     Considering this would be a materialized view on raw incoming data,
-    we prepare it differently than `simple.py`
+    we prepare it differently than `simple-full.py`
     """
     del row['properties'] # drop properties because we don't need it for this table
     return row

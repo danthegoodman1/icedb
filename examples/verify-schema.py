@@ -10,7 +10,7 @@ Run:
 `docker compose up -d`
 
 Then:
-`python simple.py`
+`python simple-full.py`
 """
 
 from icedb.icedb import IceDBv3, CompressionCodec

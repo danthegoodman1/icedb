@@ -52,7 +52,7 @@ def format_row_raw(row: dict) -> dict:
 def format_row_mv(row: dict) -> dict:
     """
     Considering this would be a materialized view on raw incoming data,
-    we prepare it differently than `simple.py`
+    we prepare it differently than `simple-full.py`
     """
     del row['properties'] # drop properties because we don't need it for this table
     row['cnt'] = 1 # seed the incoming columns with the count to sum

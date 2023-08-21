@@ -129,7 +129,7 @@ The stability of my laptop struggled when doing the thousands test, so I only sh
 See the [examples](examples) folder for many examples like Materialized Views, custom merge queries, schema
 validation before insert, and more.
 
-- [Simple example](examples/simple.py)
+- [Simple example](examples/simple-full.py)
 - [Materialized View example](examples/materialized-view.py)
 - Custom merge queries [aggregation](examples/custom-merge-aggregation.py)
   and [replacing](examples/custom-merge-replacing.py)
