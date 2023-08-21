@@ -20,36 +20,34 @@ clever data design can also replace provisioned solutions such as a ClickHouse c
 It is also ideal for multi-tenant workloads where your end users want to directly submit SQL
 
 <!-- TOC -->
-
 * [IceDB](#icedb)
-    * [Performance test](#performance-test)
-    * [Examples](#examples)
-    * [Comparisons](#comparisons)
-        * [Why IceDB?](#why-icedb)
-        * [Why not BigQuery or Athena?](#why-not-bigquery-or-athena)
-        * [Why not ClickHouse, TimescaleDB, RedShift, etc?](#why-not-clickhouse-timescaledb-redshift-etc)
-        * [Why not the Spark/Flink/EMR ecosystem](#why-not-the-sparkflinkemr-ecosystem)
-        * [When not to use IceDB](#when-not-to-use-icedb)
-    * [Tips before you dive in](#tips-before-you-dive-in)
-        * [Insert in large batches](#insert-in-large-batches)
-        * [Merge and Tombstone clean often](#merge-and-tombstone-clean-often)
-        * [Large partitions, sort your data well!](#large-partitions-sort-your-data-well)
-        * [Schema validation before insert](#schema-validation-before-insert)
-    * [Usage](#usage)
-        * [Partition function (`part_func`)](#partition-function-partfunc)
-        * [Sorting Order (`sort_order`)](#sorting-order-sortorder)
-        * [Row format function (`format_row`)](#row-format-function-formatrow)
-        * [`unique_row_key`](#uniquerowkey)
-    * [Pre-installing DuckDB extensions](#pre-installing-duckdb-extensions)
-    * [Merging](#merging)
-    * [Concurrent merges](#concurrent-merges)
-    * [Tombstone cleanup](#tombstone-cleanup)
-    * [Custom Merge Query (ADVANCED USAGE)](#custom-merge-query-advanced-usage)
-        * [Handling `_row_id`](#handling-rowid)
-            * [Deduplicating Data on Merge](#deduplicating-data-on-merge)
-            * [Replacing Data on Merge](#replacing-data-on-merge)
-            * [Aggregating Data on Merge](#aggregating-data-on-merge)
-
+  * [Performance test](#performance-test)
+  * [Examples](#examples)
+  * [Comparisons to other systems](#comparisons-to-other-systems)
+    * [Why IceDB?](#why-icedb)
+    * [Why not BigQuery or Athena?](#why-not-bigquery-or-athena)
+    * [Why not ClickHouse, TimescaleDB, RedShift, etc.?](#why-not-clickhouse-timescaledb-redshift-etc)
+    * [Why not the Spark/Flink/EMR ecosystem](#why-not-the-sparkflinkemr-ecosystem)
+    * [When not to use IceDB](#when-not-to-use-icedb)
+  * [Tips before you dive in](#tips-before-you-dive-in)
+    * [Insert in large batches](#insert-in-large-batches)
+    * [Merge and Tombstone clean often](#merge-and-tombstone-clean-often)
+    * [Large partitions, sort your data well!](#large-partitions-sort-your-data-well)
+    * [Schema validation before insert](#schema-validation-before-insert)
+  * [Usage](#usage)
+    * [Partition function (`part_func`)](#partition-function-partfunc)
+    * [Sorting Order (`sort_order`)](#sorting-order-sortorder)
+    * [Row format function (`format_row`)](#row-format-function-formatrow)
+    * [`unique_row_key`](#uniquerowkey)
+  * [Pre-installing DuckDB extensions](#pre-installing-duckdb-extensions)
+  * [Merging](#merging)
+  * [Concurrent merges](#concurrent-merges)
+  * [Tombstone cleanup](#tombstone-cleanup)
+  * [Custom Merge Query (ADVANCED USAGE)](#custom-merge-query-advanced-usage)
+    * [Handling `_row_id`](#handling-rowid)
+      * [Deduplicating Data on Merge](#deduplicating-data-on-merge)
+      * [Replacing Data on Merge](#replacing-data-on-merge)
+      * [Aggregating Data on Merge](#aggregating-data-on-merge)
 <!-- TOC -->
 
 ## Performance test
@@ -154,6 +152,7 @@ IceDB offers many novel features out of the box that comparable data warehouses 
 - Native multi-tenancy with prefix control and the [IceDB S3 Proxy](https://github.com/danthegoodman1/IceDBS3Proxy),
   including letting end-users write their own SQL queries
 - True separation of data storage, metadata storage, and compute with shared storage (S3)
+- Zero-copy data sharing by permitting access to S3 prefixes for other users
 - Multiple options for query processing (DuckDB, ClickHouse, CHDB, Datafusion, Pandas, custom parquet readers in any
   language)
 - Open data formats for both the log and data storage
@@ -170,7 +169,6 @@ massive resources to fulfill queries when requested. The issues with BigQuery (a
 - They are limited to their respective cloud providers
 - Closed source, no way to self-host or contribute
 - Only one available query engine
-- Driving a nail with a sledgehammer: no way to adjust query resources when reading smaller amounts of data
 - Show query startup time
 
 For example, queries on data that might cost $6 on BigQuery would only be around ~$0.10 running IceDB and
