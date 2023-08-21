@@ -61,6 +61,8 @@ request). One could also choose to use a transactionally-secure schema catalog t
 declare their schema ahead of time, and more to validate the schema. Ultimately it is not up to IceDB to verify the
 schema during inserts.
 
+All columns should be considered nullable, however it is up to the developer to determine whether there can be defaults for partition and sorting columns (otherwise they should be logically required in your code)
+
 #### Log file tombstones (tmb)
 
 These are the logs files that were merged into a new file, and only exists if this log file was the result of a merge.
