@@ -1,12 +1,12 @@
 from typing import List, Callable, Dict
 import duckdb
 from uuid import uuid4
-import pandas as pd
 from .log import (IceLogIO, Schema, LogMetadata, S3Client, FileMarker, LogTombstone, get_log_file_info,
                  LogMetadataFromJSON, LogTombstoneFromJSON, FileMarkerFromJSON)
 from time import time
 import json
 from enum import Enum
+import pyarrow as pa
 
 
 class CompressionCodec(Enum):
@@ -18,7 +18,6 @@ class CompressionCodec(Enum):
 
 PartitionFunctionType = Callable[[dict], str]
 FormatRowType = Callable[[dict], dict]
-
 
 class IceDBv3:
     partition_function: PartitionFunctionType
@@ -77,6 +76,36 @@ class IceDBv3:
         if duckdb_ext_dir is not None:
             self.ddb.execute(f"SET extension_directory='{duckdb_ext_dir}'")
 
+    def __format_lambda(self, row):
+        self.format_row(row)
+        row['_row_id'] = str(uuid4()) if self.unique_row_key is None else row[self.unique_row_key]
+        return row
+
+    def __format_lambda_str(self, row):
+        """
+        A version of format_lambda that just uses a string for
+        performance purposes when calculating schema
+        """
+        self.format_row(row)
+        row['_row_id'] = "" if self.unique_row_key is None else row[self.unique_row_key]
+        return row
+
+    def get_schema(self, rows: list[dict]):
+        """
+        Creates one or more files in the destination folder based on the partition strategy :param rows: Rows of JSON
+        data to be inserted. Must have the expected keys of the partitioning strategy and the sorting order
+        """
+        running_schema = Schema()
+
+        arw = pa.Table.from_pylist(list(map(self.__format_lambda_str, rows)))
+
+        # get schema
+        self.ddb.execute("describe select * from arw")
+        schema_arrow = self.ddb.arrow()
+        running_schema.accumulate(list(map(lambda x: str(x), schema_arrow.column('column_name'))), list(map(lambda x:
+         str(x), schema_arrow.column('column_type'))))
+        return running_schema
+
     def insert(self, rows: list[dict]) -> list[FileMarker]:
         """
         Creates one or more files in the destination folder based on the partition strategy :param rows: Rows of JSON
@@ -100,30 +129,25 @@ class IceDBv3:
             if self.s3c.s3prefix is not None:
                 path_parts = [self.s3c.s3prefix] + path_parts
             fullpath = '/'.join(path_parts)
-            part_rows = part_map[part]
+            s = time()
+            part_rows = list(map(self.__format_lambda, part_map[part]))
+            # for item in part_rows:
+            #     self.format_row(item)
+            #     item['_row_id'] = str(uuid4()) if self.unique_row_key is None else item[self.unique_row_key]
 
-            # use a DF for inserting into duckdb
-            first_row = self.format_row(part_rows[0].copy())  # need to make copy so we don't modify
-            first_row['_row_id'] = str(uuid4()) if self.unique_row_key is None else part_rows[0][self.unique_row_key]
-            for key in first_row:
-                # convert everything to array
-                first_row[key] = [first_row[key]]
-            df = pd.DataFrame(first_row)
-            if len(part_rows) > 1:
-                # we need to add more rows
-                for row in part_rows[1:]:
-                    new_row = self.format_row(row.copy())  # need to make copy so we don't modify
-                    new_row['_row_id'] = str(uuid4()) if self.unique_row_key is None else row[self.unique_row_key]
-                    df.loc[len(df)] = new_row
+            # py arrow table for inserting into duckdb
+            arw = pa.Table.from_pylist(part_rows)
+            # print(arw)
 
             # get schema
-            self.ddb.execute("describe select * from df")
-            schema_df = self.ddb.df()
-            running_schema.accumulate(schema_df['column_name'].tolist(), schema_df['column_type'].tolist())
+            self.ddb.execute("describe select * from arw")
+            schema_arrow = self.ddb.arrow()
+            running_schema.accumulate(list(map(lambda x: str(x), schema_arrow.column('column_name'))),
+                                      list(map(lambda x: str(x), schema_arrow.column('column_type'))))
 
             # copy to parquet file
             self.ddb.execute(
-                f"copy (select * from df order by {','.join(self.sort_order)}) to 's3://{self.s3c.s3bucket}/"
+                f"copy (select * from arw order by {','.join(self.sort_order)}) to 's3://{self.s3c.s3bucket}/"
                 f"{fullpath}' (FORMAT PARQUET, CODEC '{self.compression_codec.value}', ROW_GROUP_SIZE"
                 f" {self.row_group_size})")
 
@@ -139,33 +163,6 @@ class IceDBv3:
         log_path, log_meta = logio.append(self.s3c, 1, running_schema, file_markers)
 
         return file_markers
-
-    def get_schema(self, rows: list[dict]):
-        """
-        Creates one or more files in the destination folder based on the partition strategy :param rows: Rows of JSON
-        data to be inserted. Must have the expected keys of the partitioning strategy and the sorting order
-        """
-        running_schema = Schema()
-
-        first_row = self.format_row(rows[0].copy())  # need to make copy so we don't modify
-        first_row['_row_id'] = str(uuid4()) if self.unique_row_key is None else rows[0][self.unique_row_key]
-        for key in first_row:
-            # convert everything to array
-            first_row[key] = [first_row[key]]
-        df = pd.DataFrame(first_row)
-        if len(rows) > 1:
-            # we need to add more rows
-            for row in rows[1:]:
-                new_row = self.format_row(row.copy())  # need to make copy so we don't modify
-                new_row['_row_id'] = str(uuid4()) if self.unique_row_key is None else row[self.unique_row_key]
-                df.loc[len(df)] = new_row
-
-        # get schema
-        self.ddb.execute("describe select * from df")
-        schema_df = self.ddb.df()
-        running_schema.accumulate(schema_df['column_name'].tolist(), schema_df['column_type'].tolist())
-
-        return running_schema
 
     def merge(self, max_file_size=10_000_000, max_file_count=10, asc=False,
               custom_merge_query: str = None) -> tuple[

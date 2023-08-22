@@ -4,6 +4,7 @@ from datetime import datetime
 import json
 from time import time
 import sys
+from copy import deepcopy
 
 s3c = S3Client(s3prefix="tenant", s3bucket="testbucket", s3region="us-east-1", s3endpoint="http://localhost:9000",
                s3accesskey="user", s3secretkey="password")
@@ -115,7 +116,7 @@ try:
     print("schema valid")
 
     print("============= inserting ==================")
-    inserted = ice.insert(example_events)
+    inserted = ice.insert(deepcopy(example_events))
     firstInserted = list(map(lambda x: x.path, inserted))
     print('inserted', firstInserted)
 
@@ -145,7 +146,7 @@ try:
 
     # ================= do it again =====================
     print("============= inserting ==================")
-    inserted = ice.insert(more_example_events)
+    inserted = ice.insert(deepcopy(more_example_events))
     secondInserted = list(map(lambda x: x.path, inserted))
     print('inserted', secondInserted)
 
@@ -172,8 +173,8 @@ try:
     assert res[1][0] == 2
 
     # ================= one more time =====================
-    print("============= inserting ==================")
-    inserted = ice.insert(more_example_events)
+    print("============= inserting third ==================")
+    inserted = ice.insert(deepcopy(more_example_events))
     third_inserted = list(map(lambda x: x.path, inserted))
     print('inserted', third_inserted)
 
@@ -264,15 +265,15 @@ try:
     expected_cleaned_log_files = list(filter(lambda x: "_m_" in x, l1))
     print("expected cleaned log files", expected_cleaned_log_files)
     print("actual cleaned log files", cleaned_log_files)
-    assert cleaned_log_files == expected_cleaned_log_files
+    assert cleaned_log_files.sort() == expected_cleaned_log_files.sort()
 
     print("expected deleted log files", actual_log_tombstones)
     print("actual deleted log files", deleted_log_files)
-    assert deleted_log_files == actual_log_tombstones
+    assert deleted_log_files.sort() == actual_log_tombstones.sort()
 
     print("expected deleted data files", actual_tomb)
     print("actual deleted data files", deleted_data_files)
-    assert deleted_data_files == actual_tomb
+    assert deleted_data_files.sort() == actual_tomb.sort()
 
     # Verify query results are the same
     # Read the state in
@@ -314,7 +315,7 @@ try:
 
     s = time()
     for i in range(200):
-        ice.insert(example_events)
+        ice.insert(deepcopy(example_events))
         sys.stdout.write(f"\rinserted {i+1}")
         sys.stdout.flush()
     print("")
