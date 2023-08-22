@@ -7,6 +7,7 @@ from time import time
 import json
 from enum import Enum
 import pyarrow as pa
+from copy import deepcopy
 
 
 class CompressionCodec(Enum):
@@ -30,6 +31,7 @@ class IceDBv3:
     row_group_size: int
     path_safe_hostname: str
     compression_codec: CompressionCodec
+    auto_copy: bool
 
     def __init__(
             self,
@@ -47,7 +49,8 @@ class IceDBv3:
             custom_merge_query: str = None,
             unique_row_key: str = None,
             row_group_size: int = 122_880,
-            compression_codec: CompressionCodec = CompressionCodec.SNAPPY
+            compression_codec: CompressionCodec = CompressionCodec.SNAPPY,
+            auto_copy: bool = True
     ):
         self.partition_function = partition_function
         self.sort_order = sort_order
@@ -77,7 +80,7 @@ class IceDBv3:
             self.ddb.execute(f"SET extension_directory='{duckdb_ext_dir}'")
 
     def __format_lambda(self, row):
-        self.format_row(row)
+        row = self.format_row(row if self.auto_copy is False else deepcopy(row))
         row['_row_id'] = str(uuid4()) if self.unique_row_key is None else row[self.unique_row_key]
         return row
 
@@ -86,7 +89,7 @@ class IceDBv3:
         A version of format_lambda that just uses a string for
         performance purposes when calculating schema
         """
-        self.format_row(row)
+        row = self.format_row(row if self.auto_copy is False else deepcopy(row))
         row['_row_id'] = "" if self.unique_row_key is None else row[self.unique_row_key]
         return row
 
