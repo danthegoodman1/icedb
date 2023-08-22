@@ -60,6 +60,7 @@ class IceDBv3:
         self.unique_row_key = unique_row_key
         self.s3c = s3_client
         self.custom_merge_query = custom_merge_query
+        self.auto_copy = auto_copy
 
         self.ddb = duckdb.connect(":memory:")
         self.ddb.execute("install httpfs")
