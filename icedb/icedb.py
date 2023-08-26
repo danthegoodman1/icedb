@@ -104,10 +104,11 @@ class IceDBv3:
         """
         running_schema = Schema()
 
-        arw = pa.Table.from_pylist(list(map(self.__format_lambda_str, rows)))
+        _rows = pa.Table.from_pylist(list(map(self.__format_lambda_str, rows)))
 
         # get schema
-        self.ddb.execute("describe select * from arw")
+        self.ddb.execute("describe {} from _rows".format("select * from _rows" if self.custom_insert_query is None
+                                                         else self.custom_insert_query))
         schema_arrow = self.ddb.arrow()
         running_schema.accumulate(list(map(lambda x: str(x), schema_arrow.column('column_name'))), list(map(lambda x:
          str(x), schema_arrow.column('column_type'))))
