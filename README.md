@@ -450,6 +450,7 @@ The default insert query is:
 ```sql
 select *
 from _rows
+order by {your sort order}
 ```
 
 If you want to have a materialized view that uses `count()`, as we've seen in
@@ -459,6 +460,7 @@ can allow users to define an insert function to prepare the rows than doing so f
 ```sql
 select *, 1::BIGINT as cnt
 from _rows
+order by events, time DESC
 ```
 
 This insert query, unlike the `format_row` function, is safe to take as input from users.
