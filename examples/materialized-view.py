@@ -63,6 +63,11 @@ def format_row_mv(row: dict) -> dict:
 ice_raw = get_ice(s3c_raw, part_func_raw, format_row_raw)
 # This will be for our materialized view
 ice_mv = get_ice(s3c_mv, part_func_mv, format_row_mv)
+ice_mv.custom_merge_query = """
+select sum(cnt)::INT8 as cnt, max(ts) as ts, user_id, event
+from source_files
+group by user_id, event
+"""
 
 # Some fake events that we are ingesting, pretending we are inserting a second time into a materialized view
 example_events = [
@@ -182,17 +187,9 @@ print(f"raw table merged {len(merged_files)} data files from partition {partitio
 
 # here we reduce the rows to a single sum, and we'll keep the
 # latest ts to know when it last updated, we merge twice to hit both partitions
-merged_log, new_file, partition, merged_files, meta = ice_mv.merge(custom_merge_query="""
-select sum(cnt)::INT8 as cnt, max(ts) as ts, user_id, event
-from source_files
-group by user_id, event
-""")
+merged_log, new_file, partition, merged_files, meta = ice_mv.merge()
 print(f"mv table merged {len(merged_files)} data files from partition {partition}")
-merged_log, new_file, partition, merged_files, meta = ice_mv.merge(custom_merge_query="""
-select sum(cnt)::INT8 as cnt, max(ts) as ts, user_id, event
-from source_files
-group by user_id, event
-""")
+merged_log, new_file, partition, merged_files, meta = ice_mv.merge()
 print(f"mv table merged {len(merged_files)} data files from partition {partition}")
 
 print("============= check number of rows in raw table =============")

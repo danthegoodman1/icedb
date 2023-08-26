@@ -28,6 +28,7 @@ class IceDBv3:
     s3c: S3Client
     unique_row_key: str | None
     custom_merge_query: str | None
+    custom_insert_query: str | None
     row_group_size: int
     path_safe_hostname: str
     compression_codec: CompressionCodec
@@ -47,6 +48,7 @@ class IceDBv3:
             s3_use_path: bool = False,
             duckdb_ext_dir: str = None,
             custom_merge_query: str = None,
+            custom_insert_query: str = None,
             unique_row_key: str = None,
             row_group_size: int = 122_880,
             compression_codec: CompressionCodec = CompressionCodec.SNAPPY,
@@ -60,6 +62,7 @@ class IceDBv3:
         self.unique_row_key = unique_row_key
         self.s3c = s3_client
         self.custom_merge_query = custom_merge_query
+        self.custom_insert_query = custom_insert_query
         self.auto_copy = auto_copy
 
         self.ddb = duckdb.connect(":memory:")
@@ -140,20 +143,25 @@ class IceDBv3:
             #     item['_row_id'] = str(uuid4()) if self.unique_row_key is None else item[self.unique_row_key]
 
             # py arrow table for inserting into duckdb
-            arw = pa.Table.from_pylist(part_rows)
-            # print(arw)
+            _rows = pa.Table.from_pylist(part_rows)
 
             # get schema
-            self.ddb.execute("describe select * from arw")
+            self.ddb.execute("describe select * from _rows")
             schema_arrow = self.ddb.arrow()
             running_schema.accumulate(list(map(lambda x: str(x), schema_arrow.column('column_name'))),
                                       list(map(lambda x: str(x), schema_arrow.column('column_type'))))
 
             # copy to parquet file
-            self.ddb.execute(
-                f"copy (select * from arw order by {','.join(self.sort_order)}) to 's3://{self.s3c.s3bucket}/"
-                f"{fullpath}' (FORMAT PARQUET, CODEC '{self.compression_codec.value}', ROW_GROUP_SIZE"
-                f" {self.row_group_size})")
+            self.ddb.execute("""
+            copy ({}) to 's3://{}/{}' (format parquet, codec '{}', row_group_size {})
+            """.format(
+                'select * from _rows order by {}'.format(
+                    ','.join(self.sort_order)) if self.custom_insert_query is None else self.custom_insert_query,
+                self.s3c.s3bucket,
+                fullpath,
+                self.compression_codec.value,
+                self.row_group_size
+            ))
 
             # get file metadata
             obj = self.s3c.s3.head_object(
@@ -168,8 +176,7 @@ class IceDBv3:
 
         return file_markers
 
-    def merge(self, max_file_size=10_000_000, max_file_count=10, asc=False,
-              custom_merge_query: str = None) -> tuple[
+    def merge(self, max_file_size=10_000_000, max_file_count=10, asc=False) -> tuple[
         str | None, FileMarker | None, str | None, list[FileMarker] | None, LogMetadata | None]:
         """
         desc merge should be fast, working on active partitions. asc merge should be slow and in background,
@@ -220,7 +227,7 @@ class IceDBv3:
                 fullpath = '/'.join(path_parts)
 
                 q = "COPY ({}) TO '{}' (FORMAT PARQUET, CODEC '{}', ROW_GROUP_SIZE {})".format(
-                    ("select * from source_files" if custom_merge_query is None else custom_merge_query).replace(
+                    ("select * from source_files" if self.custom_merge_query is None else self.custom_merge_query).replace(
                         "source_files", "read_parquet(?, hive_partitioning=1)"),
                     's3://{}/{}'.format(self.s3c.s3bucket, fullpath),
                     self.compression_codec.value, self.row_group_size

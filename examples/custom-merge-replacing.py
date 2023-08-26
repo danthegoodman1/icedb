@@ -41,6 +41,11 @@ def format_row(row: dict) -> dict:
 
 
 ice = get_ice(s3c, part_func, format_row)
+ice.custom_merge_query = """
+select user_id, arg_max(event, ts) as event, max(ts) as ts, arg_max(properties, ts) as properties
+from source_files
+group by user_id
+"""
 
 # Some fake events that we are ingesting, pretending we are inserting a second time into a materialized view
 example_events = [
@@ -180,11 +185,7 @@ print(ddb.sql(query))
 
 print("============= merging =============")
 # here we reduce the rows to a single latest row
-merged_log, new_file, partition, merged_files, meta = ice.merge(custom_merge_query="""
-select user_id, arg_max(event, ts) as event, max(ts) as ts, arg_max(properties, ts) as properties
-from source_files
-group by user_id
-""")
+merged_log, new_file, partition, merged_files, meta = ice.merge()
 print(f"merged {len(merged_files)} data files from partition {partition}")
 
 print("============= check number of raw rows in data =============")
