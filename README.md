@@ -37,13 +37,14 @@ It is also ideal for multi-tenant workloads where your end users want to directl
   * [Usage](#usage)
     * [Partition function (`part_func`)](#partition-function-partfunc)
     * [Sorting Order (`sort_order`)](#sorting-order-sortorder)
-    * [Row format function (`format_row`)](#row-format-function-formatrow)
+    * [Row format function (`format_row`) (optional)](#row-format-function-formatrow-optional)
     * [`unique_row_key`](#uniquerowkey)
   * [Pre-installing DuckDB extensions](#pre-installing-duckdb-extensions)
   * [Merging](#merging)
   * [Concurrent merges](#concurrent-merges)
   * [Tombstone cleanup](#tombstone-cleanup)
   * [Custom Merge Query (ADVANCED USAGE)](#custom-merge-query-advanced-usage)
+  * [Custom Insert Query (ADVACED USAGE)](#custom-insert-query-advanced-usage)
     * [Handling `_row_id`](#handling-rowid)
       * [Deduplicating Data on Merge](#deduplicating-data-on-merge)
       * [Replacing Data on Merge](#replacing-data-on-merge)
@@ -355,7 +356,7 @@ def format_row(row: dict) -> dict:
     return row
 ```
 
-You could also handle this with the [custom insert queries](#custom-insert-query-advaced-usage) like:
+You could also handle this with the [custom insert queries](#custom-insert-query-advanced-usage) like:
 ```sql
 select *
 EXCLUDE properties -- remove the old properties
@@ -378,7 +379,10 @@ def format_row(row: dict) -> dict:
     return row
 ```
 
-### `unique_row_key`
+However, if you need users to define this row preparation, then best to use
+[custom insert queries](#custom-insert-query-advanced-usage)
+
+### `unique_row_key` (`_row_id`)
 
 If provided, will use a top-level row key as the `_row_id` for deduplication instead of generating a UUID per-row.
 Use this if your rows already have some unique ID generated.
@@ -434,12 +438,13 @@ For example, you might run this every 10 minutes to delete files that were marke
 You can optionally provide a custom merge query to achieve functionality such as aggregate-on-merge or replace-on-merge
 as found in the variety of ClickHouse engine tables such as the AggregatingMergeTree and ReplacingMergeTree.
 
-This can also be used along side double-writing (to different partition prefixes) to create materialized views!
+This can also be used alongside double-writing (to different partition prefixes) to create materialized views!
 
 **WARNING: If you do not retain your merged files, bugs in merges can permanently corrupt data. Only customize merges if
 you know exactly what you are doing!**
 
 This is achieved through the `custom_merge_query` function. You should not provide any parameters to this query.
+All queries use DuckDB.
 
 The default query is:
 
@@ -454,10 +459,28 @@ The `?` **must be included**, and is the list of files being merged.
 Note that the `hive_partitioning` columns are virtual, and do not appear in the merged parquet file, therefore is it not
 needed.
 
-## Custom Insert Query (ADVACED USAGE)
+See examples:
+- [Aggregation merge](examples/custom-merge-aggregation.py) and [with custom insert query](examples/custom-merge-aggregation-with-custom-insert.py)
+- [Replacing merge](examples/custom-merge-replacing.py)
+
+Because this is not a "SQL-native merge" like systems such as ClickHouse, we do have to keep in mind how to format 
+and prepare rows for merging.
+
+For example if we are keeping a running count, we need to prepare each row with an initial `cnt = 1`, and merges 
+will use `sum(cnt)` instead. The best way to think about this is literally concatenating multiple sub-tables of the 
+same schema.
+
+You can prepare rows by either:
+- Modifying them before insert
+- Using the `format_row` param (safe copying by default)
+- Using the `custom_insert_query` param (use if user-defined)
+
+The example above cover different ways you can prepare rows for different scenarios.
+
+## Custom Insert Query (ADVANCED USAGE)
 
 This function is run at insert/schema introspection time, after any `format_row` function (if exists). The actual 
-rows are available at `_rows`.
+rows are available at `_rows`. All queries use DuckDB.
 
 The default insert query is:
 
