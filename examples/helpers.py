@@ -55,7 +55,6 @@ def get_ice(s3_client, part_func, format_row):
     return IceDBv3(
     part_func,
     ['event', 'ts'],  # We are doing to sort by event, then timestamp of the event within the data part
-    format_row,
     "us-east-1",  # This is all local minio stuff
     "user",
     "password",
@@ -63,5 +62,6 @@ def get_ice(s3_client, part_func, format_row):
     s3_client,
     "dan-mbp",
     True,  # needed for local minio
+    format_row=format_row,
     compression_codec=CompressionCodec.ZSTD  # Let's force a higher compression level, default is SNAPPY
 )

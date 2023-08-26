@@ -23,7 +23,7 @@ FormatRowType = Callable[[dict], dict]
 class IceDBv3:
     partition_function: PartitionFunctionType
     sort_order: List[str]
-    format_row: FormatRowType
+    format_row: FormatRowType | None
     ddb: duckdb
     s3c: S3Client
     unique_row_key: str | None
@@ -38,13 +38,13 @@ class IceDBv3:
             self,
             partition_function: PartitionFunctionType,
             sort_order: List[str],
-            format_row: FormatRowType,
             s3_region: str,
             s3_access_key: str,
             s3_secret_key: str,
             s3_endpoint: str,
             s3_client: S3Client,
             path_safe_hostname: str,
+            format_row: FormatRowType = None,
             s3_use_path: bool = False,
             duckdb_ext_dir: str = None,
             custom_merge_query: str = None,
@@ -84,7 +84,8 @@ class IceDBv3:
             self.ddb.execute(f"SET extension_directory='{duckdb_ext_dir}'")
 
     def __format_lambda(self, row):
-        row = self.format_row(row if self.auto_copy is False else deepcopy(row))
+        if self.format_row is not None:
+            row = self.format_row(row if self.auto_copy is False else deepcopy(row))
         row['_row_id'] = str(uuid4()) if self.unique_row_key is None else row[self.unique_row_key]
         return row
 
@@ -93,7 +94,8 @@ class IceDBv3:
         A version of format_lambda that just uses a string for
         performance purposes when calculating schema
         """
-        row = self.format_row(row if self.auto_copy is False else deepcopy(row))
+        if self.format_row is not None:
+            row = self.format_row(row if self.auto_copy is False else deepcopy(row))
         row['_row_id'] = "" if self.unique_row_key is None else row[self.unique_row_key]
         return row
 

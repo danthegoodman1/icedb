@@ -335,10 +335,12 @@ Example sorting by event, then timestamp:
 This will allow us to efficiently query for events over time as we can pick a specific event, then filter the time
 range while reducing the amount of irrelevant rows read.
 
-### Row format function (`format_row`)
+### Row format function (`format_row`) (optional)
 
 The function that will determine how a row is finally formatted just before being inserted into parquet.
-For example, you might want to stringify some JSON.
+For example, you might want to stringify some JSON. This is a convenience method that will apply some mutation to 
+every row inserted (or for `get_schema`) while handling copying as specified with the `autocopy` setting (default 
+`True`).
 
 **It's crucial that you flatten the row and do not have nested objects**
 
@@ -351,6 +353,15 @@ import json
 def format_row(row: dict) -> dict:
     row['properties'] = json.dumps(row['properties'])  # convert nested dict to json string
     return row
+```
+
+You could also handle this with the [custom insert queries](#custom-insert-query-advaced-usage) like:
+```sql
+select *
+EXCLUDE properties -- remove the old properties
+, to_json(properties) as properties -- replace the properties with stringified JSON
+from _rows
+order by event, time
 ```
 
 For something like a Materialized View that keeps a running count, we need to seed the row with an initial count, so
@@ -445,6 +456,9 @@ needed.
 
 ## Custom Insert Query (ADVACED USAGE)
 
+This function is run at insert/schema introspection time, after any `format_row` function (if exists). The actual 
+rows are available at `_rows`.
+
 The default insert query is:
 
 ```sql
@@ -467,6 +481,16 @@ This insert query, unlike the `format_row` function, is safe to take as input fr
 
 _Note: it's always best to explicitly declare the type, as DuckDB uses `int32` by default here when we probably want 
 `int64`._
+
+Another example is flattening JSON before inserting:
+
+```sql
+select *
+EXCLUDE properties -- remove the old properties
+, to_json(properties) as properties -- replace the properties with stringified JSON
+from _rows
+order by event, time
+```
 
 ### Handling `_row_id`
 
