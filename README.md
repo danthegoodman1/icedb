@@ -443,6 +443,29 @@ The `?` **must be included**, and is the list of files being merged.
 Note that the `hive_partitioning` columns are virtual, and do not appear in the merged parquet file, therefore is it not
 needed.
 
+## Custom Insert Query (ADVACED USAGE)
+
+The default insert query is:
+
+```sql
+select *
+from _rows
+```
+
+If you want to have a materialized view that uses `count()`, as we've seen in
+[the example](examples/custom-merge-aggregation.py) we need to seed rows with an initial value. It's much easier if we
+can allow users to define an insert function to prepare the rows than doing so from python:
+
+```sql
+select *, 1::BIGINT as cnt
+from _rows
+```
+
+This insert query, unlike the `format_row` function, is safe to take as input from users.
+
+_Note: it's always best to explicitly declare the type, as DuckDB uses `int32` by default here when we probably want 
+`int64`._
+
 ### Handling `_row_id`
 
 #### Deduplicating Data on Merge
