@@ -61,7 +61,7 @@ def get_ice(s3_client, part_func, format_row):
     "http://localhost:9000",
     s3_client,
     "dan-mbp",
-    True,  # needed for local minio
+    s3_use_path=True,  # needed for local minio
     format_row=format_row,
     compression_codec=CompressionCodec.ZSTD  # Let's force a higher compression level, default is SNAPPY
 )
