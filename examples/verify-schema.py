@@ -94,7 +94,7 @@ def check_schema_conflicts(old: Schema, new: Schema):
     for col in new.columns():
         if col in old:
             if old[col] != new[col]:
-                raise SchemaConflictException(col, [old[col], new[col]])
+                raise SchemaConflictException(col, old[col], new[col])
 
 print("============= inserting events ==================")
 # Get initial schema

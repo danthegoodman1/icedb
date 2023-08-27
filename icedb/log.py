@@ -7,13 +7,16 @@ from time import time
 
 class SchemaConflictException(Exception):
     column: str
-    foundTypes: list[str]
+    current_type: str
+    new_type: str
     message: str
 
-    def __init__(self, column: str, foundTypes: list[str]):
+    def __init__(self, column: str, current_type: str, new_type: str):
         self.column = column
-        self.foundTypes = foundTypes
-        self.message = f"tried to convert schema to JSON with column '{self.column}' conflicting types: {', '.join(foundTypes)}"
+        self.current_type = current_type
+        self.new_type = new_type
+        self.message = (f"tried to convert schema to JSON with column '{self.column}' conflicting types: "
+                        f"{', '.join([current_type, new_type])}")
     def __str__(self):
         return self.message
 
@@ -70,7 +73,7 @@ class Schema:
             if col in self.d:
                 added = False
                 if colType != self.d[col]:
-                    raise SchemaConflictException(col, [self.d[col], colType])
+                    raise SchemaConflictException(col, self.d[col], colType)
             self.d[col] = colType
         return added
 
