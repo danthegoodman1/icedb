@@ -38,13 +38,14 @@ It is also ideal for multi-tenant workloads where your end users want to directl
     * [Partition function (`part_func`)](#partition-function-partfunc)
     * [Sorting Order (`sort_order`)](#sorting-order-sortorder)
     * [Row format function (`format_row`) (optional)](#row-format-function-formatrow-optional)
-    * [`unique_row_key`](#uniquerowkey)
+    * [`unique_row_key` (`_row_id`)](#uniquerowkey-rowid)
   * [Pre-installing DuckDB extensions](#pre-installing-duckdb-extensions)
   * [Merging](#merging)
   * [Concurrent merges](#concurrent-merges)
   * [Tombstone cleanup](#tombstone-cleanup)
   * [Custom Merge Query (ADVANCED USAGE)](#custom-merge-query-advanced-usage)
-  * [Custom Insert Query (ADVACED USAGE)](#custom-insert-query-advanced-usage)
+    * ["Seeding" rows for aggregations](#seeding-rows-for-aggregations)
+  * [Custom Insert Query (ADVANCED USAGE)](#custom-insert-query-advanced-usage)
     * [Handling `_row_id`](#handling-rowid)
       * [Deduplicating Data on Merge](#deduplicating-data-on-merge)
       * [Replacing Data on Merge](#replacing-data-on-merge)
@@ -463,8 +464,11 @@ See examples:
 - [Aggregation merge](examples/custom-merge-aggregation.py) and [with custom insert query](examples/custom-merge-aggregation-with-custom-insert.py)
 - [Replacing merge](examples/custom-merge-replacing.py)
 
+### "Seeding" rows for aggregations
+
 Because this is not a "SQL-native merge" like systems such as ClickHouse, we do have to keep in mind how to format 
-and prepare rows for merging.
+and prepare rows for merging.  The ideal way to do this is to understand how the system works, and either pre-format 
+the rows, use the `format_row` function, or (if user-defined) use the `custom_insert_query` discussed below.
 
 For example if we are keeping a running count, we need to prepare each row with an initial `cnt = 1`, and merges 
 will use `sum(cnt)` instead. The best way to think about this is literally concatenating multiple sub-tables of the 
@@ -476,6 +480,32 @@ You can prepare rows by either:
 - Using the `custom_insert_query` param (use if user-defined)
 
 The example above cover different ways you can prepare rows for different scenarios.
+
+Another way to "dynamically seed" rows is to use a (DuckDB) query like:
+```sql
+select user_id, event, sum(ifnull(cnt, 1)) as cnt
+from (
+    select null::int as user_id, null::varchar as event, null::bigint as cnt
+    -- can also be used: select * from values (null, null, null) fake_table(user_id, event, cnt) 
+    union all by name
+    select *
+    from read_parquet([{}])
+)
+where event is not null
+group by user_id, event
+order by cnt desc
+```
+
+This will put `NULL` where the `cnt` column doesn't yet exist, and pre-populate with `1`.
+
+In ClickHouse this is more elegant by pre-defining the schema (tracked by IceDB!) and the 
+`input_format_parquet_allow_missing_columns` setting:
+
+```sql
+SELECT COUNT(a), COUNT(b)
+FROM file('data.parquet', Parquet, 'a UInt32, b UInt32')
+SETTINGS input_format_parquet_allow_missing_columns = 1
+```
 
 ## Custom Insert Query (ADVANCED USAGE)
 
