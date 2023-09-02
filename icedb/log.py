@@ -188,11 +188,11 @@ def LogTombstoneFromJSON(jsonl: dict):
 class LogMetadata:
     version: int
     schemaLineIndex: int
-    fileLineIndex: int
+    fileLineIndex: int | None
     tombstoneLineIndex: int | None
     timestamp: int
 
-    def __init__(self, version: int, schemaLineIndex: int, fileLineIndex: int, tombstoneLineIndex: int = None,
+    def __init__(self, version: int, schemaLineIndex: int, fileLineIndex: int = None, tombstoneLineIndex: int = None,
                  timestamp: int = None):
         self.version = version
         self.schemaLineIndex = schemaLineIndex
@@ -204,9 +204,11 @@ class LogMetadata:
         d = {
             "v": self.version,
             "sch": self.schemaLineIndex,
-            "f": self.fileLineIndex,
             "t": self.timestamp
         }
+
+        if self.fileLineIndex is not None:
+            d["f"] = self.fileLineIndex
 
         if self.tombstoneLineIndex is not None:
             d["tmb"] = self.tombstoneLineIndex
@@ -221,7 +223,8 @@ class LogMetadata:
 
 
 def LogMetadataFromJSON(jsonl: dict):
-    lm = LogMetadata(jsonl["v"], jsonl["sch"], jsonl["f"], jsonl["tmb"] if "tmb" in jsonl else None)
+    lm = LogMetadata(jsonl["v"], jsonl["sch"], jsonl["f"] if "f" in jsonl else None, jsonl["tmb"] if "tmb" in jsonl
+    else None)
     lm.timestamp = jsonl["t"]
     return lm
 
@@ -265,14 +268,15 @@ class IceLogIO:
                     tombstones[tmb_dict["p"]] = LogTombstone(tmb_dict["p"], int(tmb_dict["t"]))
 
             # Files
-            for i in range(meta.fileLineIndex, len(jsonl)):
-                fm_json = dict(json.loads(jsonl[i]))
+            if meta.fileLineIndex is not None:
+                for i in range(meta.fileLineIndex, len(jsonl)):
+                    fm_json = dict(json.loads(jsonl[i]))
 
-                # Otherwise add if not exists
-                fm = FileMarker(fm_json["p"], int(fm_json["t"]), int(fm_json["b"]),
-                                fm_json["tmb"] if "tmb" in fm_json else None)
-                fm.vir_source_log_file = file
-                file_markers[fm_json["p"]] = fm
+                    # Otherwise add if not exists
+                    fm = FileMarker(fm_json["p"], int(fm_json["t"]), int(fm_json["b"]),
+                                    fm_json["tmb"] if "tmb" in fm_json else None)
+                    fm.vir_source_log_file = file
+                    file_markers[fm_json["p"]] = fm
 
         if len(log_files) == 0:
             raise NoLogFilesException
@@ -326,7 +330,7 @@ class IceLogIO:
         schema, file_markers, log_tombstones = self.read_log_forward(s3client, log_files)
         return schema, file_markers, log_tombstones, log_files
 
-    def append(self, s3client: S3Client, version: int, schema: Schema, files: list[FileMarker], tombstones: list[
+    def append(self, s3client: S3Client, version: int, schema: Schema, files: list[FileMarker] = None, tombstones: list[
         LogTombstone] = None, merged = False, timestamp: int = None) -> tuple[str, LogMetadata]:
         """
         Creates a new log file in S3, in the order of version, schema, tombstones?, files
@@ -339,8 +343,10 @@ class IceLogIO:
         if tombstones is not None:
             for tmb in tombstones:
                 log_file_lines.append(tmb.toJSON())
-        for fileMarker in files:
-            log_file_lines.append(fileMarker.json())
+
+        if files is not None:
+            for fileMarker in files:
+                log_file_lines.append(fileMarker.json())
 
         file_id = f"{meta.timestamp}"
         if merged:
