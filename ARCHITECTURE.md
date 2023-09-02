@@ -128,7 +128,7 @@ If log files A and B were merged into C, then A and B represent a stale version 
 breaking existing list query operations from not being able to find their files.
 
 Merged log files are not immediately deleted to prevent issues with current operations, and are marked as merged in the
-new log file so they are able to be cleaned up. You must to ensure that files are only cleaned long after they could be
+new log file so they are able to be cleaned up. You must ensure that files are only cleaned long after they could be
 in use (say multiple times the max e2e query timeout, including list operation times). This is why it's important to
 insert infrequently and in large batches, to prevent too many files from building up before they can be deleted.
 
@@ -163,3 +163,15 @@ locking.
 
 Tombstone cleanup would simply result in redundant actions which can reduce performance, however concurrent merges
 on the same parts may result in duplicate data, which must be avoided.
+
+## Partition removal
+
+Partition removal works like:
+
+1. Read the state and build a list of unique partitions
+2. Get the list of partitions to delete back from the user
+3. Merge those log files by creating a new one with any file marker in the removed partitions with a tombstone, and 
+   tombstones for the involved log files
+
+Because it only involves log files, it is very fast. It can be combined with partition rewriting for user data 
+deletion (prefer partition removal where possible), and also used for TTL if the date is in the partition.

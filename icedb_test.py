@@ -412,6 +412,10 @@ try:
     s1, f1, t1, l1 = log.read_at_max_time(s3c, round(time() * 1000))
     print("read post tombstone clean state in", time() - s)
 
+    print("files", len(f1), "logs", len(l1))
+    assert len(l1) == 1
+    assert len(f1) == 2
+
     print("verify expected results")
     s = time()
     alive_files = list(filter(lambda x: x.tombstone is None, f1))
@@ -459,30 +463,38 @@ try:
         assert res[0][0] == 406
         assert res[1][0] == 203
 
-    # print("============= insert conflicting types ==================")
-    # conflicting_out = ice.insert([{
-    #     "ts": 1686176939445,
-    #     "event": 1,
-    #     "user_id": 1.2,
-    #     "properties": {
-    #         "hey": "ho",
-    #         "numtime": 1,
-    #         "nested_dict": {
-    #             "ee": "fff"
-    #         }
-    #     }
-    # }])
-    # try:
-    #     # Read the state in
-    #     log = IceLogIO("dan-mbp")
-    #     s1, f1, t1, l1 = log.read_at_max_time(s3c, round(time() * 1000))
-    #     print("=== Current State ===")
-    #     print("schema:", s1)
-    #     print("files:", f1)
-    #     print("tombstones:", t1)
-    #     print("log files:", l1)
-    # except SchemaConflictException as e:
-    #     print("Caught schema conflict, this should normally be handled at insert time")
+    print("============= partition removal ==================")
+    # existing partitions:
+    # cust=test/d=2023-02-11
+    # cust=test/d=2023-06-07
+    new_log, meta, deleted = ice.remove_partitions(lambda partitions: list(filter(lambda partition: partition == "cust=test/d=2023-06-07",
+                                                                                  partitions)))
+    print(f"partition removal deleted {deleted} files with the new log path {new_log}")
+
+    s = time()
+    s1, f1, t1, l1 = log.read_at_max_time(s3c, round(time() * 1000))
+    print("read partition removal state in", time() - s)
+
+    alive_files = list(filter(lambda x: x.tombstone is None, f1))
+    print("files", len(f1), "logs", len(l1), "alive files", len(alive_files))
+    print(s1, f1, t1, l1)
+    assert len(l1) == 2
+    assert len(alive_files) == 1
+    assert len(f1) == 2
+
+    print("verify expected results")
+    s = time()
+    print(f"got {len(alive_files)} alive files")
+    query = "select count(user_id), user_id from read_parquet([{}]) group by user_id order by count(user_id) desc".format(
+        ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
+    )
+    # THIS IS A BAD IDEA NEVER DO THIS IN PRODUCTION
+    ice.ddb.execute(query)
+    res = ice.ddb.fetchall()
+    print(res, "in", time() - s)
+
+    assert(len(res) == 1)
+    assert res[0][0] == 203
 
     print("test successful!")
 except Exception as e:

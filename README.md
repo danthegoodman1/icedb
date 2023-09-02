@@ -393,6 +393,23 @@ However, if you need users to define this row preparation, then best to use
 If provided, will use a top-level row key as the `_row_id` for deduplication instead of generating a UUID per-row.
 Use this if your rows already have some unique ID generated.
 
+### Removing partitions (`remove_partitions`)
+
+The `remove_partitions` function can be dynamically invoked to remove a given partition from the data set. This can 
+be used for features like TTL expiry, or for removing user data if that is tracked via partition (prefer 
+partition removal for performance, otherwise see 
+partition rewriting below).
+
+This method takes in a function that evaluates a list of unique partitions, and returns the list of partitions to drop.
+
+Then, a log-only merge occurs where the file markers are given tombstones, and their respective log files have 
+tombstones created. No data parts are involved in this operation, so it is very fast.
+
+This requires the merge lock to run concurrently on a table. The merge lock is required for ensuring 
+that no data is copied into another part while you are potentially dropping it.
+
+This is only run on alive files, parts with tombstones are ignored as they are already marked for deletion.
+
 ## Pre-installing DuckDB extensions
 
 DuckDB uses the `httpfs` extension. See how to pre-install it into your runtime
