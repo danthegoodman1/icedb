@@ -280,6 +280,11 @@ ones required to determine the partition (unless you have defaults on those colu
 
 See a simple [example here](examples/verify-schema.py) on verifying the schema before inserting.
 
+### Tracking the running schema
+
+IceDB will track the running schema natively. One caveat to this functionality is that if you remove a column as a 
+part of a partition rewrite and that column never returns, IceDB will not remove that from the schema.
+
 ## Usage
 
 ```
