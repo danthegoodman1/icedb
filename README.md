@@ -410,6 +410,23 @@ that no data is copied into another part while you are potentially dropping it.
 
 This is only run on alive files, parts with tombstones are ignored as they are already marked for deletion.
 
+### Rewriting partitions (`rewrite_partition`)
+
+For every part in a given partition, the files are rewritten after being passed through the given SQL query to 
+filter out unwanted rows.
+Useful for purging data for a given user, deduplication, and more.
+New parts are created within the same partition, and old files are marked with a tombstone.
+It is CRITICAL that new columns are not created (against the known schema, not just the
+file) as the current schema is copied to the new log file, and changes will be ignored by the log.
+
+The target data will be at `_rows`, so for example your query might look like:
+
+```
+select *
+from _rows
+where user_id != 'user_a'
+```
+
 ## Pre-installing DuckDB extensions
 
 DuckDB uses the `httpfs` extension. See how to pre-install it into your runtime

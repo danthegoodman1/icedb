@@ -440,10 +440,8 @@ class IceDBv3:
         New parts are created within the same partition, and old files are marked with a tombstone.
         It is CRITICAL that new columns are not created (against the known schema, not just the
         file) as the current schema is copied to the new log file, and changes will be ignored by the log.
-        While no data parts are merged, this is considered a "merged" log file as it tombstones old
-        log files.
 
-        The target data will be at _rows, so for example your query might look like:
+        The target data will be at `_rows`, so for example your query might look like:
 
         ```
         select *
