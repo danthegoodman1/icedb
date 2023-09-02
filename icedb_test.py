@@ -24,15 +24,15 @@ def format_row(row: dict) -> dict:
 ice = IceDBv3(
     part_func,
     ['event', 'ts'],
-    format_row,
     "us-east-1",
     "user",
     "password",
     "http://localhost:9000",
     s3c,
     "dan-mbp",
-    True,
-    compression_codec=CompressionCodec.ZSTD
+    s3_use_path=True,
+    compression_codec=CompressionCodec.ZSTD,
+    format_row=format_row
 )
 
 example_events = [
