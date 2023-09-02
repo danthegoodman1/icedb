@@ -173,12 +173,14 @@ class IceDBv3:
                 self.row_group_size
             ))
 
+            insert_time = round(time() * 1000)
+
             # get file metadata
             obj = self.s3c.s3.head_object(
                 Bucket=self.s3c.s3bucket,
                 Key=fullpath
             )
-            file_markers.append(FileMarker(fullpath, round(time() * 1000), obj['ContentLength']))
+            file_markers.append(FileMarker(fullpath, insert_time, obj['ContentLength']))
 
         # Append to log
         logio = IceLogIO(self.path_safe_hostname)
@@ -441,6 +443,14 @@ class IceDBv3:
         While no data parts are merged, this is considered a "merged" log file as it tombstones old
         log files.
 
+        The target data will be at _rows, so for example your query might look like:
+
+        ```
+        select *
+        from _rows
+        where user_id != 'user_a'
+        ```
+
         Returns the new log file path, metadata, and the list of data files that were rewritten.
 
         Requires the merge lock if running concurrently.
@@ -475,19 +485,20 @@ class IceDBv3:
             self.ddb.execute("""
                         copy ({}) to 's3://{}/{}' (format parquet, codec '{}', row_group_size {})
                         """.format(
-                filter_query,
+                filter_query.replace("_rows", "read_parquet(?)"),
                 self.s3c.s3bucket,
                 fullpath,
                 self.compression_codec.value,
                 self.row_group_size
-            ))
+            ), [f"s3://{self.s3c.s3bucket}/{old_file.path}"])
+            write_time = round(time() * 1000)
 
             # get file metadata
             obj = self.s3c.s3.head_object(
                 Bucket=self.s3c.s3bucket,
                 Key=fullpath
             )
-            new_files.append(FileMarker(fullpath, round(time() * 1000), obj['ContentLength']))
+            new_files.append(FileMarker(fullpath, write_time, obj['ContentLength']))
 
         rewritten_paths = list(map(lambda x: x.path, rewrite_targets))
         updated_markers = list(map(lambda x: FileMarker(
@@ -504,9 +515,7 @@ class IceDBv3:
             self.s3c,
             1,
             cur_schema,
-            updated_markers + [
-                new_files
-            ],
+            updated_markers + new_files,
             cur_tombstones + new_tombstones,
             merged=True
         )

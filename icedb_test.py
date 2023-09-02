@@ -467,7 +467,7 @@ try:
     # existing partitions:
     # cust=test/d=2023-02-11
     # cust=test/d=2023-06-07
-    new_log, meta, deleted = ice.remove_partitions(lambda partitions: list(filter(lambda partition: partition == "cust=test/d=2023-06-07",
+    new_log, meta, deleted = ice.remove_partitions(lambda partitions: list(filter(lambda partition: partition == "cust=test/d=2023-02-11",
                                                                                   partitions)))
     print(f"partition removal deleted {deleted} files with the new log path {new_log}")
 
@@ -481,6 +481,39 @@ try:
     assert len(l1) == 2
     assert len(alive_files) == 1
     assert len(f1) == 2
+
+    print("verify expected results")
+    s = time()
+    print(f"got {len(alive_files)} alive files")
+    query = "select count(user_id), user_id from read_parquet([{}]) group by user_id order by count(user_id) desc".format(
+        ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
+    )
+    # THIS IS A BAD IDEA NEVER DO THIS IN PRODUCTION
+    ice.ddb.execute(query)
+    res = ice.ddb.fetchall()
+    print(res, "in", time() - s)
+
+    assert(len(res) == 1)
+    assert res[0][0] == 406
+
+    print("============= partition rewrite ==================")
+    new_log, meta, rewritten = ice.rewrite_partition("cust=test/d=2023-06-07", """
+    select *
+    from _rows
+    where event != 'page_load'
+    """)
+    print(f"partition rewrite to files {rewritten} with the new log path {new_log}")
+
+    s = time()
+    s1, f1, t1, l1 = log.read_at_max_time(s3c, round(time() * 1000))
+    print("read partition rewrite state in", time() - s)
+
+    alive_files = list(filter(lambda x: x.tombstone is None, f1))
+    print("files", len(f1), "logs", len(l1), "alive files", len(alive_files))
+    print(s1, f1, t1, l1)
+    assert len(l1) == 3
+    assert len(alive_files) == 1
+    assert len(f1) == 3
 
     print("verify expected results")
     s = time()
