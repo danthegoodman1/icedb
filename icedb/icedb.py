@@ -100,6 +100,13 @@ class IceDBv3:
         row['_row_id'] = "" if self.unique_row_key is None else row[self.unique_row_key]
         return row
 
+    def __get_file_partition(self, full_path: str) -> str:
+        base_path = full_path.split("_data/")[1]
+        path_parts = base_path.split("/")
+        # remove the file name
+        partition = '/'.join(path_parts[:-1])
+        return partition
+
     def get_schema(self, rows: list[dict]):
         """
         Creates one or more files in the destination folder based on the partition strategy :param rows: Rows of JSON
@@ -140,7 +147,6 @@ class IceDBv3:
             if self.s3c.s3prefix is not None:
                 path_parts = [self.s3c.s3prefix] + path_parts
             fullpath = '/'.join(path_parts)
-            s = time()
             part_rows = list(map(self.__format_lambda, part_map[part]))
             # for item in part_rows:
             #     self.format_row(item)
@@ -167,12 +173,14 @@ class IceDBv3:
                 self.row_group_size
             ))
 
+            insert_time = round(time() * 1000)
+
             # get file metadata
             obj = self.s3c.s3.head_object(
                 Bucket=self.s3c.s3bucket,
                 Key=fullpath
             )
-            file_markers.append(FileMarker(fullpath, round(time() * 1000), obj['ContentLength']))
+            file_markers.append(FileMarker(fullpath, insert_time, obj['ContentLength']))
 
         # Append to log
         logio = IceLogIO(self.path_safe_hostname)
@@ -194,12 +202,7 @@ class IceDBv3:
         # Group by partition
         partitions: Dict[str, list[FileMarker]] = {}
         for file in cur_files:
-            file_path = file.path
-            if self.s3c.s3prefix is not None:
-                file_path = file_path.removeprefix(self.s3c.s3prefix + "/_data/")
-            path_parts = file_path.split("/")
-            # remove the file name
-            partition = '/'.join(path_parts[:-1])
+            partition = self.__get_file_partition(file.path)
             if partition not in partitions:
                 partitions[partition] = []
             partitions[partition].append(file)
@@ -372,7 +375,7 @@ class IceDBv3:
 
         Returns the new log file path, the log file metadata, and the number of data files deleted
 
-        Requires the merge and tombstone lock if running concurrently.
+        Requires the merge lock if running concurrently.
         """
 
         remove_time = round(time() * 1000)
@@ -380,15 +383,11 @@ class IceDBv3:
         logio = IceLogIO(self.path_safe_hostname)
         cur_schema, cur_files, cur_tombstones, all_log_files = logio.read_at_max_time(self.s3c, remove_time)
 
-        # Group by partition
+        # Group by partition (on alive files
+        alive_files = list(filter(lambda x: x.tombstone is None, cur_files))
         partitions: Dict[str, list[FileMarker]] = {}
-        for file in cur_files:
-            file_path = file.path
-            if self.s3c.s3prefix is not None:
-                file_path = file_path.removeprefix(self.s3c.s3prefix + "/_data/")
-            path_parts = file_path.split("/")
-            # remove the file name
-            partition = '/'.join(path_parts[:-1])
+        for file in alive_files:
+            partition = self.__get_file_partition(file.path)
             if partition not in partitions:
                 partitions[partition] = []
             partitions[partition].append(file)
@@ -433,3 +432,90 @@ class IceDBv3:
         )
 
         return new_log, meta, deleted_parts
+
+    def rewrite_partition(self, target_partition: str, filter_query: str) -> tuple[str | None, LogMetadata | None, list[str]]:
+        """
+        For every part in a given partition, the files are rewritten after being passed through the given SQL query.
+        Useful for purging data for a given user, deduplication, and more.
+        New parts are created within the same partition, and old files are marked with a tombstone.
+        It is CRITICAL that new columns are not created (against the known schema, not just the
+        file) as the current schema is copied to the new log file, and changes will be ignored by the log.
+
+        The target data will be at `_rows`, so for example your query might look like:
+
+        ```
+        select *
+        from _rows
+        where user_id != 'user_a'
+        ```
+
+        Returns the new log file path, metadata, and the list of data files that were rewritten.
+
+        Requires the merge lock if running concurrently.
+        """
+
+        run_time = round(time() * 1000)
+
+        logio = IceLogIO(self.path_safe_hostname)
+        cur_schema, cur_files, cur_tombstones, all_log_files = logio.read_at_max_time(self.s3c, run_time)
+
+        # Get alive files matching partition
+        alive_files = list(filter(lambda x: x.tombstone is None, cur_files))
+        rewrite_targets: list[FileMarker] = []
+        for file in alive_files:
+            partition = self.__get_file_partition(file.path)
+            if target_partition == partition:
+                rewrite_targets.append(file)
+
+        if len(rewrite_targets) == 0:
+            return None, None, []
+
+        new_files: list[FileMarker] = []
+        for old_file in rewrite_targets:
+            filename = str(uuid4()) + '.parquet'
+            partition = self.__get_file_partition(old_file.path)
+            path_parts = ['_data', partition, filename]
+            if self.s3c.s3prefix is not None:
+                path_parts = [self.s3c.s3prefix] + path_parts
+            fullpath = '/'.join(path_parts)
+
+            # Copy the files through the query
+            self.ddb.execute("""
+                        copy ({}) to 's3://{}/{}' (format parquet, codec '{}', row_group_size {})
+                        """.format(
+                filter_query.replace("_rows", "read_parquet(?)"),
+                self.s3c.s3bucket,
+                fullpath,
+                self.compression_codec.value,
+                self.row_group_size
+            ), [f"s3://{self.s3c.s3bucket}/{old_file.path}"])
+            write_time = round(time() * 1000)
+
+            # get file metadata
+            obj = self.s3c.s3.head_object(
+                Bucket=self.s3c.s3bucket,
+                Key=fullpath
+            )
+            new_files.append(FileMarker(fullpath, write_time, obj['ContentLength']))
+
+        rewritten_paths = list(map(lambda x: x.path, rewrite_targets))
+        updated_markers = list(map(lambda x: FileMarker(
+            x.path,
+            x.createdMS,
+            x.fileBytes,
+            run_time if x.path in rewritten_paths else x.tombstone),
+                                   cur_files))
+
+        new_tombstones = list(map(lambda x: LogTombstone(x, run_time),
+                                  list(map(lambda x: x.vir_source_log_file, rewrite_targets))))
+
+        new_log, meta = logio.append(
+            self.s3c,
+            1,
+            cur_schema,
+            updated_markers + new_files,
+            cur_tombstones + new_tombstones,
+            merged=True
+        )
+
+        return new_log, meta, list(map(lambda x: x.path, rewrite_targets))

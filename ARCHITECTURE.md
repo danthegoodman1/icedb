@@ -174,4 +174,18 @@ Partition removal works like:
    tombstones for the involved log files
 
 Because it only involves log files, it is very fast. It can be combined with partition rewriting for user data 
-deletion (prefer partition removal where possible), and also used for TTL if the date is in the partition.
+deletion (prefer partition removal where possible), and also used for TTL if the date is in the partition. 
+Additionally, since it is only one file operation, it is fully atomic.
+
+## Partition rewrite
+
+Partition rewrites will pass data parts through a filter query into a new partition. The new log files is only 
+written after all data parts are rewritten, so in the event of disruption none of the files will be seen. They will 
+be written, but not seen by any reads. You may wish to mark this partition as needing manual cleaning at some future 
+time (can be done by finding files not present in the log).
+
+While no data parts are merged, this is considered a "merged" log file as it tombstones old
+log files.
+
+If the rewrite removals all files, then a data part with no rows will be written. If you know you may be filtering 
+out all rows, it is best to just drop the partition.
