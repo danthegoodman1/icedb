@@ -19,6 +19,7 @@ class CompressionCodec(Enum):
 
 PartitionFunctionType = Callable[[dict], str]
 FormatRowType = Callable[[dict], dict]
+PartitionRemovalFunctionType = Callable[[list[str]], list[str]]
 
 class IceDBv3:
     partition_function: PartitionFunctionType
@@ -109,7 +110,7 @@ class IceDBv3:
         _rows = pa.Table.from_pylist(list(map(self.__format_lambda_str, rows)))
 
         # get schema
-        self.ddb.execute("describe {} from _rows".format("select * from _rows" if self.custom_insert_query is None
+        self.ddb.execute("describe {}".format("select * from _rows" if self.custom_insert_query is None
                                                          else self.custom_insert_query))
         schema_arrow = self.ddb.arrow()
         running_schema.accumulate(list(map(lambda x: str(x), schema_arrow.column('column_name'))), list(map(lambda x:
@@ -360,3 +361,75 @@ class IceDBv3:
             deleted_data_files += list(map(lambda x: x.path, file_markers_to_delete))
 
         return cleaned_log_files, deleted_log_files, deleted_data_files
+
+    def remove_partitions(self, removal_func: PartitionRemovalFunctionType, max_files=1000) -> tuple[str | None,
+    LogMetadata | None, int]:
+        """
+        remove_partitions is used to drop entire partitions for functionality such as TTL or user data deletion.
+        The `removal_func` is provided a list of unique partitions, and must return the list of
+        partitions that should be dropped.
+        Those data parts will be marked with tombstones in a log-only merge.
+
+        Returns the new log file path, the log file metadata, and the number of data files deleted
+
+        Requires the merge and tombstone lock if running concurrently.
+        """
+
+        remove_time = round(time() * 1000)
+
+        logio = IceLogIO(self.path_safe_hostname)
+        cur_schema, cur_files, cur_tombstones, all_log_files = logio.read_at_max_time(self.s3c, remove_time)
+
+        # Group by partition
+        partitions: Dict[str, list[FileMarker]] = {}
+        for file in cur_files:
+            file_path = file.path
+            if self.s3c.s3prefix is not None:
+                file_path = file_path.removeprefix(self.s3c.s3prefix + "/_data/")
+            path_parts = file_path.split("/")
+            # remove the file name
+            partition = '/'.join(path_parts[:-1])
+            if partition not in partitions:
+                partitions[partition] = []
+            partitions[partition].append(file)
+
+        partitions_to_remove = removal_func(list(partitions.keys()))
+        if len(partitions_to_remove) == 0:
+            # nothing to do
+            return None, None, 0
+
+        modified_log_files = {}
+        updated_file_markers: list[FileMarker] = []
+        deleted_parts = 0
+
+        # Get all the file markers and log files to tombstone
+        for partition in partitions_to_remove:
+            if partition not in partitions:
+                continue
+
+            file_markers = partitions[partition]
+            if len(file_markers) == 0:
+                continue
+
+            for file_marker in file_markers:
+                deleted_parts += 1
+                file_marker.tombstone = remove_time # add the tombstone
+                updated_file_markers.append(file_marker)
+                modified_log_files[file_marker.vir_source_log_file] = True
+
+            if deleted_parts >= max_files:
+                # We've done enough, let's break
+                break
+
+        # Log-only merge
+        log_tombstones = list(map(lambda x: LogTombstone(x, remove_time), list(modified_log_files)))
+        new_log, meta = logio.append(
+            self.s3c,
+            1,
+            cur_schema,
+            updated_file_markers,
+            log_tombstones,
+            merged=True
+        )
+
+        return new_log, meta, deleted_parts
