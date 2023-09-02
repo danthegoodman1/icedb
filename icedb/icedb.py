@@ -19,6 +19,7 @@ class CompressionCodec(Enum):
 
 PartitionFunctionType = Callable[[dict], str]
 FormatRowType = Callable[[dict], dict]
+PartitionRemovalFunctionType = Callable[[list[str]], list[str]]
 
 class IceDBv3:
     partition_function: PartitionFunctionType
@@ -320,11 +321,12 @@ class IceDBv3:
                         log_files_to_delete.append(tmb.path)
 
             # File markers
-            file_markers: list[FileMarker] = []
-            for i in range(meta.fileLineIndex, len(jsonl)):
-                fm_json = dict(json.loads(jsonl[i]))
-                fm = FileMarkerFromJSON(fm_json)
-                file_markers.append(fm)
+            if meta.fileLineIndex is not None:
+                file_markers: list[FileMarker] = []
+                for i in range(meta.fileLineIndex, len(jsonl)):
+                    fm_json = dict(json.loads(jsonl[i]))
+                    fm = FileMarkerFromJSON(fm_json)
+                    file_markers.append(fm)
 
             # Delete log tombstones
             for log_path in log_files_to_delete:
@@ -360,3 +362,10 @@ class IceDBv3:
             deleted_data_files += list(map(lambda x: x.path, file_markers_to_delete))
 
         return cleaned_log_files, deleted_log_files, deleted_data_files
+
+    def remove_partitions(self, removal_func: PartitionRemovalFunctionType)-> list[str]:
+        """
+        remove_partitions is used to drop entire partitions for functionality such as TTL or user data deletion. The
+        `removal_func` is provided a list of unique partitions, and must return the list of partitions that should be dropped. Those data parts will be marked with tombstones, and their respective log files will be
+        Requires the merge and tombstone lock
+        """
