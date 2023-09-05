@@ -1,19 +1,19 @@
 # IceDB v3 Architecture
 
 <!-- TOC -->
-
 * [IceDB v3 Architecture](#icedb-v3-architecture)
-    * [Log file(s)](#log-files)
-        * [Log file structure](#log-file-structure)
-            * [Metadata](#metadata)
-            * [Schema (sch)](#schema-sch)
-            * [Log file tombstones (tmb)](#log-file-tombstones-tmb)
-            * [File marker (f)](#file-marker-f)
-        * [Reading the log files](#reading-the-log-files)
-    * [Merging](#merging)
-    * [Tombstone cleanup](#tombstone-cleanup)
-    * [Concurrent Merge and Tombstone cleanup](#concurrent-merge-and-tombstone-cleanup)
-
+  * [Log file(s)](#log-files)
+    * [Log file structure](#log-file-structure)
+      * [Metadata](#metadata)
+      * [Schema (sch)](#schema-sch)
+      * [Log file tombstones (tmb)](#log-file-tombstones-tmb)
+      * [File marker (f)](#file-marker-f)
+    * [Reading the log files](#reading-the-log-files)
+  * [Merging](#merging)
+  * [Tombstone cleanup](#tombstone-cleanup)
+  * [Concurrent Merge and Tombstone cleanup](#concurrent-merge-and-tombstone-cleanup)
+  * [Partition removal](#partition-removal)
+  * [Partition rewrite](#partition-rewrite)
 <!-- TOC -->
 
 ## Log file(s)
@@ -189,3 +189,6 @@ log files.
 
 If the rewrite removals all files, then a data part with no rows will be written. If you know you may be filtering 
 out all rows, it is best to just drop the partition.
+
+Because this is writing the same data, it's important to acquire the merge lock during this operation, so this 
+should be used somewhat sparingly.

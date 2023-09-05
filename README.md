@@ -422,6 +422,9 @@ New parts are created within the same partition, and old files are marked with a
 It is CRITICAL that new columns are not created (against the known schema, not just the
 file) as the current schema is copied to the new log file, and changes will be ignored by the log.
 
+Because this is writing the same data, it's important to acquire the merge lock during this operation, so this 
+should be used somewhat sparingly.
+
 The target data will be at `_rows`, so for example your query might look like:
 
 ```
