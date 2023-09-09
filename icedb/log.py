@@ -89,11 +89,8 @@ class Schema:
             dataTypes.append(self.d[col])
         return dataTypes
 
-    def pairs(self) -> list[list[str]]:
-        pairs = []
-        for col in self.d.keys():
-            pairs.append([col, self.d[col]])
-        return pairs
+    def pairs(self):
+        return self.d.items()
 
     def toJSON(self) -> str:
         return json.dumps(self.d)
