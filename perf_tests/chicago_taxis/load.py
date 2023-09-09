@@ -31,7 +31,10 @@ csv_headers = [
 flush_limit = 100_000
 
 def part_func(row: dict) -> str:
-    return ""
+    # Normally you should parse this with datetime package and
+    # verify it, but we know the data is good, so we'll just short circuit it
+    trip_start = row['Trip Start Timestamp']  # 2015-05-07 20:30:00 UTC
+    return trip_start.split(" ")[0]  # 2015-05-07
 
 
 s3c = S3Client(s3prefix="chicago_taxis", s3bucket=os.getenv("AWS_S3_BUCKET"), s3region=os.getenv("AWS_S3_REGION"),
