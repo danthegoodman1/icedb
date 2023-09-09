@@ -7,8 +7,17 @@ def query(q: str):
     res = chdb.query(q.replace("tbl", f"""
     from s3('{os.getenv("S3_PROXY_URL")}/fake_bucket/**/*.parquet', 'Parquet')
     """))
-    print(f"{'#'*10}\nQuery:\n\n{q}\n\nread {res.rows_read()} rows and {res.bytes_read()} bytes in {res.elapsed()} "
-          f"seconds\n\n\n")
+    print(f"""
+    
+    
+    ```sql
+    {q}
+    ```
+    
+    Time: {res.elapsed()}
+    Rows: {res.rows_read()}
+    Bytes: {res.bytes_read()}
+    """)
 
 # toDate(extract(_path, 'd=(\\w+)/')) AS trip_start_date
 
