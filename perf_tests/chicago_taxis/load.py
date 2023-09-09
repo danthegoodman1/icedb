@@ -46,8 +46,7 @@ ice = IceDBv3(
     os.getenv("AWS_KEY_SECRET"),
     os.getenv("AWS_S3_ENDPOINT"),
     s3c,
-    "local-test",
-    compression_codec=CompressionCodec.ZSTD  # Let's force a higher compression level, default is SNAPPY
+    "local-test"
 )
 
 # Let's create a row buffer to batch inserts into icedb
