@@ -1,4 +1,4 @@
-from icedb.icedb import IceDBv3, S3Client, CompressionCodec
+from icedb.icedb import IceDBv3, S3Client
 import csv, os
 from time import time
 
