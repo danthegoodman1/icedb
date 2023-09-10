@@ -9,8 +9,7 @@ import json
 from enum import Enum
 import pyarrow as pa
 from copy import deepcopy
-import asyncio
-from typing import Coroutine
+import concurrent.futures
 
 
 class CompressionCodec(Enum):
@@ -28,7 +27,6 @@ class IceDBv3:
     partition_function: PartitionFunctionType
     sort_order: List[str]
     format_row: FormatRowType | None
-    ddb: duckdb
     s3c: S3Client
     unique_row_key: str | None
     custom_merge_query: str | None
@@ -37,7 +35,8 @@ class IceDBv3:
     path_safe_hostname: str
     compression_codec: CompressionCodec
     auto_copy: bool
-    concurrent_insert_limit: int
+    max_threads: int
+    duckdb_ext_dir: str
 
     def __init__(
             self,
@@ -58,7 +57,7 @@ class IceDBv3:
             row_group_size: int = 122_880,
             compression_codec: CompressionCodec = CompressionCodec.SNAPPY,
             auto_copy: bool = True,
-            concurrent_insert_limit: int = max(os.cpu_count(), 32)
+            max_threads: int = os.cpu_count()
     ):
         self.partition_function = partition_function
         self.sort_order = sort_order
@@ -70,7 +69,19 @@ class IceDBv3:
         self.custom_merge_query = custom_merge_query
         self.custom_insert_query = custom_insert_query
         self.auto_copy = auto_copy
-        self.concurrent_insert_limit = concurrent_insert_limit
+        self.max_threads = max_threads
+
+        self.duckdb_ext_dir = duckdb_ext_dir
+        self.s3_region = s3_region
+        self.s3_access_key = s3_access_key
+        self.s3_secret_key = s3_secret_key
+        self.s3_endpoint = s3_endpoint
+        self.s3_use_path = s3_use_path
+
+        if not isinstance(compression_codec, CompressionCodec):
+            raise AttributeError(f"invalid compression codec '{compression_codec}', must be one of type CompressionCodec")
+
+        self.compression_codec = compression_codec
 
         self.ddb = duckdb.connect(":memory:")
         self.ddb.execute("install httpfs")
@@ -80,15 +91,25 @@ class IceDBv3:
         self.ddb.execute(f"SET s3_secret_access_key='{s3_secret_key}'")
         self.ddb.execute(f"SET s3_endpoint='{s3_endpoint.split('://')[1]}'")
         self.ddb.execute(f"SET s3_use_ssl={'false' if 'http://' in s3_endpoint else 'true'}")
-        if not isinstance(compression_codec, CompressionCodec):
-            raise AttributeError(f"invalid compression codec '{compression_codec}', must be one of type CompressionCodec")
-
-        self.compression_codec = compression_codec
-
         if s3_use_path:
             self.ddb.execute("SET s3_url_style='path'")
         if duckdb_ext_dir is not None:
             self.ddb.execute(f"SET extension_directory='{duckdb_ext_dir}'")
+
+    def __get_duckdb(self) -> duckdb:
+        ddb = duckdb.connect(":memory:")
+        ddb.execute("install httpfs")
+        ddb.execute("load httpfs")
+        ddb.execute(f"SET s3_region='{self.s3_region}'")
+        ddb.execute(f"SET s3_access_key_id='{self.s3_access_key}'")
+        ddb.execute(f"SET s3_secret_access_key='{self.s3_secret_key}'")
+        ddb.execute(f"SET s3_endpoint='{self.s3_endpoint.split('://')[1]}'")
+        ddb.execute(f"SET s3_use_ssl={'false' if 'http://' in self.s3_endpoint else 'true'}")
+        if self.s3_use_path:
+            ddb.execute("SET s3_url_style='path'")
+        if self.duckdb_ext_dir is not None:
+            ddb.execute(f"SET extension_directory='{self.duckdb_ext_dir}'")
+        return ddb
 
     def __format_lambda(self, row):
         if self.format_row is not None:
@@ -123,24 +144,43 @@ class IceDBv3:
         _rows = pa.Table.from_pylist(list(map(self.__format_lambda_str, rows)))
 
         # get schema
-        self.ddb.execute("describe {}".format("select * from _rows" if self.custom_insert_query is None
+        ddb = self.__get_duckdb()
+        ddb.execute("describe {}".format("select * from _rows" if self.custom_insert_query is None
                                                          else self.custom_insert_query))
-        schema_arrow = self.ddb.arrow()
+        schema_arrow = ddb.arrow()
         running_schema.accumulate(list(map(lambda x: str(x), schema_arrow.column('column_name'))), list(map(lambda x:
          str(x), schema_arrow.column('column_type'))))
         return running_schema
 
-    async def __insert_to_s3(self, fullpath: str, _rows: pa.Table, running_schema: Schema) -> FileMarker:
+    def __insert_part(self, part: str, part_ref: list[dict]) -> tuple[FileMarker, Schema]:
         s = time()
-        print("inserting to s3...")
+        print("inserting to s3 at", time())
+        running_schema = Schema()
+
+        # upload parquet file
+        filename = str(uuid4()) + '.parquet'
+        path_parts = ['_data', part, filename]
+        if self.s3c.s3prefix is not None:
+            path_parts = [self.s3c.s3prefix] + path_parts
+        fullpath = '/'.join(path_parts)
+        s = time()
+        part_rows = list(map(self.__format_lambda, part_ref))
+        print("ran lambdas on part in", time() - s)
+
+        s = time()
+        # py arrow table for inserting into duckdb
+        _rows = pa.Table.from_pylist(part_rows)
+        print("created rows for part in", time() - s)
+
         # get schema
-        self.ddb.execute("describe select * from _rows")
-        schema_arrow = self.ddb.arrow()
+        ddb = self.__get_duckdb()
+        ddb.execute("describe select * from _rows")
+        schema_arrow = ddb.arrow()
         running_schema.accumulate(list(map(lambda x: str(x), schema_arrow.column('column_name'))),
                                   list(map(lambda x: str(x), schema_arrow.column('column_type'))))
 
         # copy to parquet file
-        self.ddb.execute("""
+        ddb.execute("""
                     copy ({}) to 's3://{}/{}' (format parquet, codec '{}', row_group_size {})
                     """.format(
             'select * from _rows order by {}'.format(
@@ -159,11 +199,7 @@ class IceDBv3:
             Key=fullpath
         )
         print("inserted", fullpath, "to s3 in", time()-s)
-        return FileMarker(fullpath, insert_time, obj['ContentLength'])
-
-    async def __do_all(self, coroutines: list[Coroutine[any, any, any]]):
-        results = await asyncio.gather(*coroutines)
-        return results
+        return FileMarker(fullpath, insert_time, obj['ContentLength']), running_schema
 
     def insert(self, rows: list[dict]) -> list[FileMarker]:
         """
@@ -181,28 +217,20 @@ class IceDBv3:
         running_schema = Schema()
         file_markers: list[FileMarker] = []
 
-        coroutines = []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_threads) as executor:
+            futures = []
+            for part, part_ref in part_map.items():
+                futures.append(executor.submit(self.__insert_part, part, part_ref))
+                print('spawned thread for part', part)
 
-        for part in part_map:
-            # upload parquet file
-            filename = str(uuid4()) + '.parquet'
-            path_parts = ['_data', part, filename]
-            if self.s3c.s3prefix is not None:
-                path_parts = [self.s3c.s3prefix] + path_parts
-            fullpath = '/'.join(path_parts)
-            s = time()
-            part_rows = list(map(self.__format_lambda, part_map[part]))
-            print("ran lambdas on part in", time()-s)
-
-            # py arrow table for inserting into duckdb
-            _rows = pa.Table.from_pylist(part_rows)
-            coroutines.append(self.__insert_to_s3(fullpath, _rows, running_schema))
-            print('appended coroutine')
-
-        print('awaiting coroutines')
-        results: tuple[FileMarker] = asyncio.run(self.__do_all(coroutines))
-        for item in results:
-            file_markers.append(item)
+            print('awaiting threads')
+            for futures in concurrent.futures.as_completed(futures):
+                result: tuple[FileMarker, Schema] = futures.result()
+                # append file marker
+                file_markers.append(result[0])
+                # accumulate schema
+                running_schema.accumulate(result[1].columns(), result[1].types())
+            print('done processing threads')
 
         # Append to log
         logio = IceLogIO(self.path_safe_hostname)
