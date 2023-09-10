@@ -72,8 +72,9 @@ start = time()
 # Open the csv file for reading
 with open('chicago_taxis.csv') as csvfile:
     lr = csv.reader(csvfile, delimiter=',')
+    next(lr, None)  # skip headers
     for row in lr:
-        d = dict(zip(csv_headers, row)) # convert to a dict with the CSV headers as keys
+        d = dict(zip(csv_headers, row))  # convert to a dict with the CSV headers as keys
         row_buf.append(d)
         if len(row_buf) > flush_limit:
             flush_row_buf()
