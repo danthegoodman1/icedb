@@ -43,7 +43,7 @@ s3c = S3Client(s3prefix="chicago_taxis", s3bucket=os.getenv("AWS_S3_BUCKET"), s3
 
 ice = IceDBv3(
     part_func,
-    ['Trip Start Timestamp'],  # We are doing to sort by event, then timestamp of the event within the data part
+    ['"Trip Start Timestamp"'],  # We are doing to sort by event, then timestamp of the event within the data part
     os.getenv("AWS_S3_REGION"),  # This is all local minio stuff
     os.getenv("AWS_KEY_ID"),
     os.getenv("AWS_KEY_SECRET"),
