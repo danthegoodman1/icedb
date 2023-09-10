@@ -1,3 +1,4 @@
+import os
 from typing import List, Callable, Dict
 import duckdb
 from uuid import uuid4
@@ -8,6 +9,8 @@ import json
 from enum import Enum
 import pyarrow as pa
 from copy import deepcopy
+import asyncio
+from typing import Coroutine
 
 
 class CompressionCodec(Enum):
@@ -34,6 +37,7 @@ class IceDBv3:
     path_safe_hostname: str
     compression_codec: CompressionCodec
     auto_copy: bool
+    concurrent_insert_limit: int
 
     def __init__(
             self,
@@ -53,7 +57,8 @@ class IceDBv3:
             unique_row_key: str = None,
             row_group_size: int = 122_880,
             compression_codec: CompressionCodec = CompressionCodec.SNAPPY,
-            auto_copy: bool = True
+            auto_copy: bool = True,
+            concurrent_insert_limit: int = max(os.cpu_count(), 32)
     ):
         self.partition_function = partition_function
         self.sort_order = sort_order
@@ -65,6 +70,7 @@ class IceDBv3:
         self.custom_merge_query = custom_merge_query
         self.custom_insert_query = custom_insert_query
         self.auto_copy = auto_copy
+        self.concurrent_insert_limit = concurrent_insert_limit
 
         self.ddb = duckdb.connect(":memory:")
         self.ddb.execute("install httpfs")
@@ -124,6 +130,38 @@ class IceDBv3:
          str(x), schema_arrow.column('column_type'))))
         return running_schema
 
+    async def __insert_to_s3(self, fullpath: str, _rows: pa.Table, running_schema: Schema) -> FileMarker:
+        # get schema
+        self.ddb.execute("describe select * from _rows")
+        schema_arrow = self.ddb.arrow()
+        running_schema.accumulate(list(map(lambda x: str(x), schema_arrow.column('column_name'))),
+                                  list(map(lambda x: str(x), schema_arrow.column('column_type'))))
+
+        # copy to parquet file
+        self.ddb.execute("""
+                    copy ({}) to 's3://{}/{}' (format parquet, codec '{}', row_group_size {})
+                    """.format(
+            'select * from _rows order by {}'.format(
+                ','.join(self.sort_order)) if self.custom_insert_query is None else self.custom_insert_query,
+            self.s3c.s3bucket,
+            fullpath,
+            self.compression_codec.value,
+            self.row_group_size
+        ))
+
+        insert_time = round(time() * 1000)
+
+        # get file metadata
+        obj = self.s3c.s3.head_object(
+            Bucket=self.s3c.s3bucket,
+            Key=fullpath
+        )
+        return FileMarker(fullpath, insert_time, obj['ContentLength'])
+
+    async def __do_all(self, coroutines: list[Coroutine[any, any, any]]):
+        results = await asyncio.gather(*coroutines)
+        return results
+
     def insert(self, rows: list[dict]) -> list[FileMarker]:
         """
         Creates one or more files in the destination folder based on the partition strategy :param rows: Rows of JSON
@@ -140,6 +178,8 @@ class IceDBv3:
         running_schema = Schema()
         file_markers: list[FileMarker] = []
 
+        coroutines = []
+
         for part in part_map:
             # upload parquet file
             filename = str(uuid4()) + '.parquet'
@@ -148,43 +188,18 @@ class IceDBv3:
                 path_parts = [self.s3c.s3prefix] + path_parts
             fullpath = '/'.join(path_parts)
             part_rows = list(map(self.__format_lambda, part_map[part]))
-            # for item in part_rows:
-            #     self.format_row(item)
-            #     item['_row_id'] = str(uuid4()) if self.unique_row_key is None else item[self.unique_row_key]
 
             # py arrow table for inserting into duckdb
             _rows = pa.Table.from_pylist(part_rows)
+            coroutines.append(self.__insert_to_s3(fullpath, _rows, running_schema))
 
-            # get schema
-            self.ddb.execute("describe select * from _rows")
-            schema_arrow = self.ddb.arrow()
-            running_schema.accumulate(list(map(lambda x: str(x), schema_arrow.column('column_name'))),
-                                      list(map(lambda x: str(x), schema_arrow.column('column_type'))))
-
-            # copy to parquet file
-            self.ddb.execute("""
-            copy ({}) to 's3://{}/{}' (format parquet, codec '{}', row_group_size {})
-            """.format(
-                'select * from _rows order by {}'.format(
-                    ','.join(self.sort_order)) if self.custom_insert_query is None else self.custom_insert_query,
-                self.s3c.s3bucket,
-                fullpath,
-                self.compression_codec.value,
-                self.row_group_size
-            ))
-
-            insert_time = round(time() * 1000)
-
-            # get file metadata
-            obj = self.s3c.s3.head_object(
-                Bucket=self.s3c.s3bucket,
-                Key=fullpath
-            )
-            file_markers.append(FileMarker(fullpath, insert_time, obj['ContentLength']))
+        results: tuple[FileMarker] = asyncio.run(self.__do_all(coroutines))
+        for item in results:
+            file_markers.append(item)
 
         # Append to log
         logio = IceLogIO(self.path_safe_hostname)
-        log_path, log_meta = logio.append(self.s3c, 1, running_schema, file_markers)
+        logio.append(self.s3c, 1, running_schema, file_markers)
 
         return file_markers
 
