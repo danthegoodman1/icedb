@@ -34,6 +34,7 @@ def part_func(row: dict) -> str:
     # Normally you should parse this with datetime package and
     # verify it, but we know the data is good, so we'll just short circuit it
     trip_start = row['Trip Start Timestamp']  # 2015-05-07 20:30:00 UTC
+    print("trip start:", trip_start)
     return trip_start.split(" ")[0]  # 2015-05-07
 
 
