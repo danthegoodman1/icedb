@@ -1,6 +1,7 @@
 from icedb.icedb import IceDBv3, S3Client
 import csv, os
 from time import time
+from datetime import datetime
 
 csv_headers = [
     'Trip ID',
@@ -33,9 +34,13 @@ flush_limit = 100_000
 def part_func(row: dict) -> str:
     # Normally you should parse this with datetime package and
     # verify it, but we know the data is good, so we'll just short circuit it
-    trip_start = row['Trip Start Timestamp']  # 2015-05-07 20:30:00 UTC
+    trip_start = row['Trip Start Timestamp']
     print("trip start:", trip_start)
-    return trip_start.split(" ")[0]  # 2015-05-07
+    if trip_start[4] == '-': # 2015-05-07 20:30:00 UTC
+        return trip_start.split(" ")[0]  # 2015-05-07
+    else:
+        dt = datetime.strptime(trip_start, '%m/%d/%Y %H:%M:%S %p')  # 05/09/2014 07:30:00 PM
+        return dt.strftime("%Y-%m-%d")
 
 
 s3c = S3Client(s3prefix="chicago_taxis", s3bucket=os.getenv("AWS_S3_BUCKET"), s3region=os.getenv("AWS_S3_REGION"),
