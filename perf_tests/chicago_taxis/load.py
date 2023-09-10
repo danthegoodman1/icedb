@@ -35,11 +35,9 @@ def part_func(row: dict) -> str:
     # Normally you should parse this with datetime package and
     # verify it, but we know the data is good, so we'll just short circuit it
     trip_start = row['Trip Start Timestamp']
-    print("trip start:", trip_start)
     if trip_start[4] == '-': # 2015-05-07 20:30:00 UTC
         return trip_start.split(" ")[0]  # 2015-05-07
     else:
-        print(trip_start)
         dt = datetime.strptime(trip_start, '%m/%d/%Y %H:%M:%S %p')  # 05/09/2014 07:30:00 PM
         return dt.strftime("%Y-%m-%d")
 
