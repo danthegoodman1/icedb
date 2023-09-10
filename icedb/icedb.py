@@ -131,6 +131,8 @@ class IceDBv3:
         return running_schema
 
     async def __insert_to_s3(self, fullpath: str, _rows: pa.Table, running_schema: Schema) -> FileMarker:
+        s = time()
+        print("inserting to s3...")
         # get schema
         self.ddb.execute("describe select * from _rows")
         schema_arrow = self.ddb.arrow()
@@ -156,6 +158,7 @@ class IceDBv3:
             Bucket=self.s3c.s3bucket,
             Key=fullpath
         )
+        print("inserted", fullpath, "to s3 in", time()-s)
         return FileMarker(fullpath, insert_time, obj['ContentLength'])
 
     async def __do_all(self, coroutines: list[Coroutine[any, any, any]]):
@@ -187,8 +190,8 @@ class IceDBv3:
             if self.s3c.s3prefix is not None:
                 path_parts = [self.s3c.s3prefix] + path_parts
             fullpath = '/'.join(path_parts)
-            s = time()
             part_rows = list(map(self.__format_lambda, part_map[part]))
+            s = time()
             print("ran lambdas on part in", time()-s)
 
             # py arrow table for inserting into duckdb
