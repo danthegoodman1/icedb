@@ -60,10 +60,12 @@ ice = IceDBv3(
 # Let's create a row buffer to batch inserts into icedb
 row_buf = []
 
+
 def flush_row_buf():
     s = time()
     files = ice.insert(row_buf)
     print(f"flushed {len(row_buf)} rows and {len(files)} files in {time()-s} seconds")
+
 
 start = time()
 
@@ -74,12 +76,12 @@ with open('chicago_taxis.csv') as csvfile:
     for row in lr:
         d = dict(zip(csv_headers, row))  # convert to a dict with the CSV headers as keys
         row_buf.append(d)
-        if len(row_buf) > flush_limit:
+        if len(row_buf) >= flush_limit:
             flush_row_buf()
             row_buf = []
 
     if len(row_buf) > 0:
-        print('performing a final flush')
+        print(f'performing a final flush of {len(row_buf)} rows')
         flush_row_buf()
         row_buf = []
 
