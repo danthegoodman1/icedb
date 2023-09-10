@@ -39,6 +39,7 @@ def part_func(row: dict) -> str:
     if trip_start[4] == '-': # 2015-05-07 20:30:00 UTC
         return trip_start.split(" ")[0]  # 2015-05-07
     else:
+        print(trip_start)
         dt = datetime.strptime(trip_start, '%m/%d/%Y %H:%M:%S %p')  # 05/09/2014 07:30:00 PM
         return dt.strftime("%Y-%m-%d")
 
