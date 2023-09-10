@@ -154,7 +154,7 @@ class IceDBv3:
 
     def __insert_part(self, part: str, part_ref: list[dict]) -> tuple[FileMarker, Schema]:
         s = time()
-        print("inserting to s3 at", time())
+        # print("inserting to s3 at", time())
         running_schema = Schema()
 
         # upload parquet file
@@ -165,12 +165,12 @@ class IceDBv3:
         fullpath = '/'.join(path_parts)
         s = time()
         part_rows = list(map(self.__format_lambda, part_ref))
-        print("ran lambdas on part in", time() - s)
+        # print("ran lambdas on part in", time() - s)
 
         s = time()
         # py arrow table for inserting into duckdb
         _rows = pa.Table.from_pylist(part_rows)
-        print("created rows for part in", time() - s)
+        # print("created rows for part in", time() - s)
 
         # get schema
         ddb = self.__get_duckdb()
@@ -198,7 +198,7 @@ class IceDBv3:
             Bucket=self.s3c.s3bucket,
             Key=fullpath
         )
-        print("inserted", fullpath, "to s3 in", time()-s)
+        # print("inserted", fullpath, "to s3 in", time()-s)
         return FileMarker(fullpath, insert_time, obj['ContentLength']), running_schema
 
     def insert(self, rows: list[dict]) -> list[FileMarker]:
@@ -221,16 +221,16 @@ class IceDBv3:
             futures = []
             for part, part_ref in part_map.items():
                 futures.append(executor.submit(self.__insert_part, part, part_ref))
-                print('spawned thread for part', part)
+                # print('spawned thread for part', part)
 
-            print('awaiting threads')
+            # print('awaiting threads')
             for futures in concurrent.futures.as_completed(futures):
                 result: tuple[FileMarker, Schema] = futures.result()
                 # append file marker
                 file_markers.append(result[0])
                 # accumulate schema
                 running_schema.accumulate(result[1].columns(), result[1].types())
-            print('done processing threads')
+            # print('done processing threads')
 
         # Append to log
         logio = IceLogIO(self.path_safe_hostname)
