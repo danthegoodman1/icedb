@@ -187,7 +187,9 @@ class IceDBv3:
             if self.s3c.s3prefix is not None:
                 path_parts = [self.s3c.s3prefix] + path_parts
             fullpath = '/'.join(path_parts)
+            s = time()
             part_rows = list(map(self.__format_lambda, part_map[part]))
+            print("ran lambdas on part in", time()-s)
 
             # py arrow table for inserting into duckdb
             _rows = pa.Table.from_pylist(part_rows)
