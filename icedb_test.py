@@ -16,11 +16,6 @@ def part_func(row: dict) -> str:
     return part
 
 
-def format_row(row: dict) -> dict:
-    row['properties'] = json.dumps(row['properties'])  # convert nested dict to json string
-    return row
-
-
 ice = IceDBv3(
     part_func,
     ['event', 'ts'],
@@ -31,8 +26,7 @@ ice = IceDBv3(
     s3c,
     "dan-mbp",
     s3_use_path=True,
-    compression_codec=CompressionCodec.ZSTD,
-    format_row=format_row
+    compression_codec=CompressionCodec.ZSTD
 )
 
 example_events = [
@@ -40,35 +34,35 @@ example_events = [
         "ts": 1686176939445,
         "event": "page_load",
         "user_id": "a",
-        "properties": {
+        "properties": json.dumps({
             "hey": "ho",
             "numtime": 1,
             "nested_dict": {
                 "ee": "fff"
             }
-        }
+        })
     }, {
         "ts": 1676126229999,
         "event": "page_load",
         "user_id": "b",
-        "properties": {
+        "properties": json.dumps({
             "hey": "hoergergergrergereg",
             "numtime": 1,
             "nested_dict": {
                 "ee": "fff"
             }
-        }
+        })
     }, {
         "ts": 1686176939666,
         "event": "something_else",
         "user_id": "a",
-        "properties": {
+        "properties": json.dumps({
             "hey": "ho",
             "numtime": 1,
             "nested_dict": {
                 "ee": "fff"
             }
-        }
+        })
     }
 ]
 more_example_events = [
@@ -76,35 +70,35 @@ more_example_events = [
         "ts": 1686176939445,
         "event": "page_load",
         "user_id": "a",
-        "properties": {
+        "properties": json.dumps({
             "hey": "hoeeeeeee",
             "numtime": 1,
             "nested_dict": {
                 "ee": "fff"
             }
-        }
+        })
     }, {
         "ts": 1676126229999,
         "event": "page_load",
         "user_id": "b",
-        "properties": {
+        "properties": json.dumps({
             "hey": "hoergeeeeeeeeeeeeeeergergrergereg",
             "numtime": 1,
             "nested_dict": {
                 "ee": "fff"
             }
-        }
+        })
     }, {
         "ts": 1686176939666,
         "event": "something_else",
         "user_id": "a",
-        "properties": {
+        "properties": json.dumps({
             "hey": "hoeeeeeeeeeeeeeeeee",
             "numtime": 1,
             "nested_dict": {
                 "ee": "fff"
             }
-        }
+        })
     }
 ]
 
@@ -443,7 +437,6 @@ try:
         iceproxy = IceDBv3(
             part_func,
             ['event', 'ts'],
-            format_row,
             "us-east-1",
             "user",
             "password",

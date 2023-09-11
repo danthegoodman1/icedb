@@ -20,13 +20,11 @@ class CompressionCodec(Enum):
 
 
 PartitionFunctionType = Callable[[dict], str]
-FormatRowType = Callable[[dict], dict]
 PartitionRemovalFunctionType = Callable[[list[str]], list[str]]
 
 class IceDBv3:
     partition_function: PartitionFunctionType
     sort_order: List[str]
-    format_row: FormatRowType | None
     s3c: S3Client
     unique_row_key: str | None
     custom_merge_query: str | None
@@ -48,7 +46,6 @@ class IceDBv3:
             s3_endpoint: str,
             s3_client: S3Client,
             path_safe_hostname: str,
-            format_row: FormatRowType = None,
             s3_use_path: bool = False,
             duckdb_ext_dir: str = None,
             custom_merge_query: str = None,
@@ -61,7 +58,6 @@ class IceDBv3:
     ):
         self.partition_function = partition_function
         self.sort_order = sort_order
-        self.format_row = format_row
         self.row_group_size = row_group_size
         self.path_safe_hostname = path_safe_hostname
         self.unique_row_key = unique_row_key
@@ -101,24 +97,6 @@ class IceDBv3:
             ddb.execute(f"SET extension_directory='{self.duckdb_ext_dir}'")
         return ddb
 
-    def __format_lambda(self, row):
-        if self.format_row is not None:
-            # if _partition exists we already copied it
-            row = self.format_row(deepcopy(row) if self.auto_copy and "_partition" not in row else row)
-        # row['_row_id'] = str(uuid4()) if self.unique_row_key is None else row[self.unique_row_key]
-        return row
-
-    def __format_lambda_str(self, row):
-        """
-        A version of format_lambda that just uses a string for
-        performance purposes when calculating schema
-        """
-        if self.format_row is not None:
-            # if _partition exists we already copied it
-            row = self.format_row(deepcopy(row) if self.auto_copy and "_partition" not in row else row)
-        row['_row_id'] = "" if self.unique_row_key is None else row[self.unique_row_key]
-        return row
-
     def __get_file_partition(self, full_path: str) -> str:
         base_path = full_path.split("_data/")[1]
         path_parts = base_path.split("/")
@@ -132,8 +110,10 @@ class IceDBv3:
         data to be inserted. Must have the expected keys of the partitioning strategy and the sorting order
         """
         running_schema = Schema()
+        for row in rows:
+            row['_row_id'] = "" if self.unique_row_key is None else row[self.unique_row_key]
 
-        _rows = pa.Table.from_pylist(list(map(self.__format_lambda_str, rows)))
+        _rows = pa.Table.from_pylist(rows)
 
         # get schema
         ddb = self.get_duckdb()
@@ -144,7 +124,7 @@ class IceDBv3:
          str(x), schema_arrow.column('column_type'))))
         return running_schema
 
-    def __insert_part(self, part: str, part_ref: list[dict]) -> tuple[FileMarker, Schema]:
+    def __insert_part(self, part: str, _rows: pa.Table) -> tuple[FileMarker, Schema]:
         # print("inserting to s3 at", time())
         running_schema = Schema()
 
@@ -154,14 +134,6 @@ class IceDBv3:
         if self.s3c.s3prefix is not None:
             path_parts = [self.s3c.s3prefix] + path_parts
         fullpath = '/'.join(path_parts)
-        s = time()
-        part_rows = list(map(self.__format_lambda, part_ref))
-        print("ran lambdas on part in", time() - s)
-
-        s = time()
-        # py arrow table for inserting into duckdb
-        _rows = pa.Table.from_pylist(part_rows)
-        print("created rows for part in", time() - s)
 
         # get schema
         ddb = self.get_duckdb()
@@ -215,7 +187,7 @@ class IceDBv3:
         Creates one or more files in the destination folder based on the partition strategy :param rows: Rows of JSON
         data to be inserted. Must have the expected keys of the partitioning strategy and the sorting order
         """
-        part_map: Dict[str, list[dict]] = {}
+        part_map: Dict[str, pa.Table] = {}
         s = time()
         for row in rows:
             part: str
@@ -228,9 +200,11 @@ class IceDBv3:
             else:
                 part = self.partition_function(row)
 
+            row['_row_id'] = str(uuid4()) if self.unique_row_key is None else row[self.unique_row_key]
             if part not in part_map:
-                part_map[part] = []
-            part_map[part].append(row)
+                part_map[part] = pa.Table.from_pylist([row])
+            else:
+                part_map[part] = pa.concat_tables([part_map[part], pa.Table.from_pylist([row])])
         print(f"mapped parts in {time()-s}")
 
         running_schema = Schema()
