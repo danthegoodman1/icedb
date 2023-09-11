@@ -190,6 +190,7 @@ class IceDBv3:
         part_map: Dict[str, pa.Table] = {}
         s = time()
         for row in rows:
+            s1 = time()
             part: str
             if "_partition" in row:
                 if self.auto_copy:
@@ -205,6 +206,7 @@ class IceDBv3:
                 part_map[part] = pa.Table.from_pylist([row])
             else:
                 part_map[part] = pa.concat_tables([part_map[part], pa.Table.from_pylist([row])])
+            print(f"handled row in {time()-s1}")
         print(f"mapped parts in {time()-s}")
 
         running_schema = Schema()
