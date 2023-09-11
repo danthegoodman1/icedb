@@ -151,7 +151,7 @@ Bytes billed: 64 MB
 
 Turns out the downloaded data set is in pretty random order... despite that, it seems that with concurrent uploads 
 it's sub-linear time to upload high partitions counts. The following snippet was from a 32 vCPU machine using 32
-max_threads:
+max_threads (16vCPU was identical performance):
 
 ```
 flushed 100000 rows and 19 files in 2.2882542610168457 seconds
@@ -180,9 +180,20 @@ flushed 1000000 rows and 14 files in 18.225353002548218 seconds
 flushed 1000000 rows and 14 files in 18.443052530288696 seconds
 ```
 
-The larger the batches, the more efficient uploads are as compression becomes more effective. Uploads are relatively 
-slow per-fil even with multipart because S3 just doesn't have the same bandwidth
+The larger the batches, the more efficient uploads are as compression becomes more effective. The bottlenecks at the 
+time of writing roughly in order of slowness are:
 
-it performs shockingly well at high partition counts. In reality inserts should never touch more than a few 
+- Calculating the partition for each row (this is not parallelized)
+- Adding `_row_id` if it doesn't already exist
+- Converting the rows into pyarrow tables so that DuckDB can zero-copy upload them to S3
+
+The upload to S3 actually is the fastest step many times over!
+
+It performs shockingly well at high partition counts. In reality inserts should never touch more than a few 
 partitions. If doing <10 partitions and using a custom minio cluster, this size could easily push millions of 
 inserts per second. Double up the core count to achieve that with S3.
+
+I won't get hung up on this any longer as I know there are many optimizations to make it many times faster, and that 
+you can just add more instances of IceDB and parallelize even more (only real limit is S3 rate limit), but it's 
+probably faster than you can send to bigquery anyway through their rows-like API :P. Overall I'm quite happy with 
+this, and am already planning lots of optimizations! 
