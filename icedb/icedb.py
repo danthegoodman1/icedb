@@ -83,20 +83,10 @@ class IceDBv3:
 
         self.compression_codec = compression_codec
 
-        self.ddb = duckdb.connect(":memory:")
-        self.ddb.execute("install httpfs")
-        self.ddb.execute("load httpfs")
-        self.ddb.execute(f"SET s3_region='{s3_region}'")
-        self.ddb.execute(f"SET s3_access_key_id='{s3_access_key}'")
-        self.ddb.execute(f"SET s3_secret_access_key='{s3_secret_key}'")
-        self.ddb.execute(f"SET s3_endpoint='{s3_endpoint.split('://')[1]}'")
-        self.ddb.execute(f"SET s3_use_ssl={'false' if 'http://' in s3_endpoint else 'true'}")
-        if s3_use_path:
-            self.ddb.execute("SET s3_url_style='path'")
-        if duckdb_ext_dir is not None:
-            self.ddb.execute(f"SET extension_directory='{duckdb_ext_dir}'")
-
-    def __get_duckdb(self) -> duckdb:
+    def get_duckdb(self) -> duckdb:
+        """
+        threadsafe creation of a duckdb session
+        """
         ddb = duckdb.connect(":memory:")
         ddb.execute("install httpfs")
         ddb.execute("load httpfs")
@@ -144,7 +134,7 @@ class IceDBv3:
         _rows = pa.Table.from_pylist(list(map(self.__format_lambda_str, rows)))
 
         # get schema
-        ddb = self.__get_duckdb()
+        ddb = self.get_duckdb()
         ddb.execute("describe {}".format("select * from _rows" if self.custom_insert_query is None
                                                          else self.custom_insert_query))
         schema_arrow = ddb.arrow()
@@ -173,7 +163,7 @@ class IceDBv3:
         # print("created rows for part in", time() - s)
 
         # get schema
-        ddb = self.__get_duckdb()
+        ddb = self.get_duckdb()
         ddb.execute("describe select * from _rows")
         schema_arrow = ddb.arrow()
         running_schema.accumulate(list(map(lambda x: str(x), schema_arrow.column('column_name'))),
@@ -315,7 +305,8 @@ class IceDBv3:
                     self.compression_codec.value, self.row_group_size
                 )
 
-                self.ddb.execute(q, [
+                ddb = self.get_duckdb()
+                ddb.execute(q, [
                     list(map(lambda x: f"s3://{self.s3c.s3bucket}/{x.path}", acc_file_markers))
                 ])
 

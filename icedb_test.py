@@ -134,9 +134,9 @@ try:
         ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", f1)))
     )
     print('executing query:', query)
-    # THIS IS A BAD IDEA NEVER DO THIS IN PRODUCTION
-    ice.ddb.execute(query)
-    res = ice.ddb.fetchall()
+    ddb = ice.get_duckdb()
+    ddb.execute(query)
+    res = ddb.fetchall()
     print(res)
 
     assert res[0][0] == 2
@@ -165,8 +165,8 @@ try:
     )
     print('executing query:', query)
     # THIS IS A BAD IDEA NEVER DO THIS IN PRODUCTION
-    ice.ddb.execute(query)
-    res = ice.ddb.fetchall()
+    ddb.execute(query)
+    res = ddb.fetchall()
     print(res)
 
     assert res[0][0] == 4
@@ -193,8 +193,8 @@ try:
     )
     print('executing query:', query)
     # THIS IS A BAD IDEA NEVER DO THIS IN PRODUCTION
-    ice.ddb.execute(query)
-    res = ice.ddb.fetchall()
+    ddb.execute(query)
+    res = ddb.fetchall()
     print(res)
 
     assert res[0][0] == 6
@@ -249,8 +249,8 @@ try:
     )
     print('executing query:', query)
     # THIS IS A BAD IDEA NEVER DO THIS IN PRODUCTION
-    ice.ddb.execute(query)
-    res = ice.ddb.fetchall()
+    ddb.execute(query)
+    res = ddb.fetchall()
     print(res)
 
     assert res[0][0] == 6
@@ -302,8 +302,8 @@ try:
     )
     print('executing query:', query)
     # THIS IS A BAD IDEA NEVER DO THIS IN PRODUCTION
-    ice.ddb.execute(query)
-    res = ice.ddb.fetchall()
+    ddb.execute(query)
+    res = ddb.fetchall()
     print(res)
 
     assert res[0][0] == 6
@@ -339,8 +339,8 @@ try:
         ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
     )
     # THIS IS A BAD IDEA NEVER DO THIS IN PRODUCTION
-    ice.ddb.execute(query)
-    res = ice.ddb.fetchall()
+    ddb.execute(query)
+    res = ddb.fetchall()
     print(res, "in", time()-s)
 
     assert res[0][0] == 406
@@ -367,8 +367,8 @@ try:
         ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
     )
     # THIS IS A BAD IDEA NEVER DO THIS IN PRODUCTION
-    ice.ddb.execute(query)
-    res = ice.ddb.fetchall()
+    ddb.execute(query)
+    res = ddb.fetchall()
     print(res, "in", time() - s)
 
     assert res[0][0] == 406
@@ -397,8 +397,8 @@ try:
         ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
     )
     # THIS IS A BAD IDEA NEVER DO THIS IN PRODUCTION
-    ice.ddb.execute(query)
-    res = ice.ddb.fetchall()
+    ddb.execute(query)
+    res = ddb.fetchall()
     print(res, "in", time() - s)
 
     assert res[0][0] == 406
@@ -425,8 +425,8 @@ try:
         ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
     )
     # THIS IS A BAD IDEA NEVER DO THIS IN PRODUCTION
-    ice.ddb.execute(query)
-    res = ice.ddb.fetchall()
+    ddb.execute(query)
+    res = ddb.fetchall()
     print(res, "in", time() - s)
 
     assert res[0][0] == 406
@@ -490,8 +490,8 @@ try:
         ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
     )
     # THIS IS A BAD IDEA NEVER DO THIS IN PRODUCTION
-    ice.ddb.execute(query)
-    res = ice.ddb.fetchall()
+    ddb.execute(query)
+    res = ddb.fetchall()
     print(res, "in", time() - s)
 
     assert(len(res) == 1)
@@ -523,8 +523,8 @@ try:
         ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
     )
     # THIS IS A BAD IDEA NEVER DO THIS IN PRODUCTION
-    ice.ddb.execute(query)
-    res = ice.ddb.fetchall()
+    ddb.execute(query)
+    res = ddb.fetchall()
     print(res, "in", time() - s)
 
     assert(len(res) == 1)
