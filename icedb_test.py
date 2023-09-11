@@ -221,7 +221,8 @@ try:
     print("log files:", l1)
 
     # verify log tombstones and file marker tombstones
-    possible_file_tmb = list(filter(lambda x: 'd=2023-06-07' in x, firstInserted + secondInserted + third_inserted))
+    possible_file_tmb = firstInserted + secondInserted + third_inserted # because of concurrency, either could be
+    # inserted first
     print("possible file tombstones:", possible_file_tmb)
     actual_tomb = list(map(lambda x: x.path, filter(lambda x: x.tombstone is not None, f1)))
     print("got actual tombstones:", actual_tomb)

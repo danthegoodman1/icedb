@@ -330,6 +330,10 @@ def part_func(row: dict) -> str:
 ice = IceDBv3(partition_strategy=part_strat, sort_order=['event', 'timestamp'])
 ```
 
+Additionally, a `_partition` property can be pre-defined on the row, which will avoid running the `part_func` and 
+use this instead (for example if you calculate this on ingest). This property will be dropped before copying the row 
+if `auto_copy` is enabled.
+
 ### Sorting Order (`sort_order`)
 
 Defines the order of top-level keys in the row dict that will be used for sorting inside the parquet file. This

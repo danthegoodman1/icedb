@@ -4,7 +4,7 @@ import duckdb
 from uuid import uuid4
 from .log import (IceLogIO, Schema, LogMetadata, S3Client, FileMarker, LogTombstone, get_log_file_info,
                  LogMetadataFromJSON, LogTombstoneFromJSON, FileMarkerFromJSON)
-from time import time
+from time import time, sleep
 import json
 from enum import Enum
 import pyarrow as pa
@@ -113,7 +113,7 @@ class IceDBv3:
 
     def __format_lambda(self, row):
         if self.format_row is not None:
-            row = self.format_row(row if self.auto_copy is False else deepcopy(row))
+            row = self.format_row(row)
         row['_row_id'] = str(uuid4()) if self.unique_row_key is None else row[self.unique_row_key]
         return row
 
@@ -123,7 +123,7 @@ class IceDBv3:
         performance purposes when calculating schema
         """
         if self.format_row is not None:
-            row = self.format_row(row if self.auto_copy is False else deepcopy(row))
+            row = self.format_row(row)
         row['_row_id'] = "" if self.unique_row_key is None else row[self.unique_row_key]
         return row
 
@@ -180,16 +180,33 @@ class IceDBv3:
                                   list(map(lambda x: str(x), schema_arrow.column('column_type'))))
 
         # copy to parquet file
-        ddb.execute("""
-                    copy ({}) to 's3://{}/{}' (format parquet, codec '{}', row_group_size {})
-                    """.format(
-            'select * from _rows order by {}'.format(
-                ','.join(self.sort_order)) if self.custom_insert_query is None else self.custom_insert_query,
-            self.s3c.s3bucket,
-            fullpath,
-            self.compression_codec.value,
-            self.row_group_size
-        ))
+        cur_tries = 0
+        while cur_tries < 3:
+            try:
+                # if cur_tries > 0:
+                    # print(f"retrying duckdb s3 upload try {cur_tries}")
+                cur_tries += 1
+                ddb.execute("""
+                            copy ({}) to 's3://{}/{}' (format parquet, codec '{}', row_group_size {})
+                            """.format(
+                    'select * from _rows order by {}'.format(
+                        ','.join(self.sort_order)) if self.custom_insert_query is None else self.custom_insert_query,
+                    self.s3c.s3bucket,
+                    fullpath,
+                    self.compression_codec.value,
+                    self.row_group_size
+                ))
+                break
+            except duckdb.HTTPException as e:
+                if e.status_code < 500:
+                    raise e
+                if cur_tries >= 3:
+                    raise e
+                print(f"HTTP exception (code {e.status_code}) uploading part on try {cur_tries}, sleeping "
+                      f"{300*cur_tries}ms before retrying")
+                sleep(0.3*cur_tries)
+            except Exception as e:
+                raise e
 
         insert_time = round(time() * 1000)
 
@@ -208,8 +225,15 @@ class IceDBv3:
         """
         part_map: Dict[str, list[dict]] = {}
         for row in rows:
-            # merge the rows into same parts
-            part = self.partition_function(row)
+            if self.auto_copy:
+                row = deepcopy(row)
+            part: str
+            if "_partition" in row:
+                part = row["_partition"]
+                del row["_partition"]
+            else:
+                part = self.partition_function(row)
+
             if part not in part_map:
                 part_map[part] = []
             part_map[part].append(row)
