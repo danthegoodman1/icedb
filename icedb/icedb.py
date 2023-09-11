@@ -180,12 +180,11 @@ class IceDBv3:
                                   list(map(lambda x: str(x), schema_arrow.column('column_type'))))
 
         # copy to parquet file
-        cur_tries = 0
-        while cur_tries < 3:
+        retires = 0
+        while retires < 3:
             try:
-                # if cur_tries > 0:
-                    # print(f"retrying duckdb s3 upload try {cur_tries}")
-                cur_tries += 1
+                # if retires > 0:
+                    # print(f"retrying duckdb s3 upload try {retires}")
                 ddb.execute("""
                             copy ({}) to 's3://{}/{}' (format parquet, codec '{}', row_group_size {})
                             """.format(
@@ -200,11 +199,12 @@ class IceDBv3:
             except duckdb.HTTPException as e:
                 if e.status_code < 500:
                     raise e
-                if cur_tries >= 3:
+                if retires >= 3:
                     raise e
-                print(f"HTTP exception (code {e.status_code}) uploading part on try {cur_tries}, sleeping "
-                      f"{300*cur_tries}ms before retrying")
-                sleep(0.3*cur_tries)
+                print(f"HTTP exception (code {e.status_code}) uploading part on try {retires}, sleeping "
+                      f"{300*retires}ms before retrying")
+                retires += 1
+                sleep(0.3*retires)
             except Exception as e:
                 raise e
 
