@@ -39,7 +39,7 @@ Time travel physical bytes
 
 ## Comparing Queries
 
-BigQuery:
+### BigQuery
 
 ```sql
 SELECT * FROM `tangia-prod.taxis_us.taxi_trips` limit 1000
@@ -146,3 +146,50 @@ This will read a single column from a subset of the partitions.
 Time: 600ms
 Bytes processed: 63.69 MB
 Bytes billed: 64 MB
+
+### IceDB
+
+Turns out the downloaded data set is in pretty random order... despite that, it seems that with concurrent uploads 
+it's sub-linear time to upload high partitions counts. The following snippet was from a 16 vCPU machine using 16 
+max_threads:
+
+```
+flushed 100000 rows and 62 files in 2.939800262451172 seconds
+flushed 100000 rows and 63 files in 3.041750907897949 seconds
+flushed 100000 rows and 62 files in 2.985896587371826 seconds
+flushed 100000 rows and 63 files in 2.866239070892334 seconds
+flushed 100000 rows and 62 files in 3.1683757305145264 seconds
+flushed 100000 rows and 61 files in 2.8781652450561523 seconds
+flushed 100000 rows and 62 files in 2.921379804611206 seconds
+flushed 100000 rows and 62 files in 3.026604175567627 seconds
+flushed 100000 rows and 63 files in 2.9038808345794678 seconds
+flushed 100000 rows and 668 files in 11.152297019958496 seconds
+flushed 100000 rows and 579 files in 9.737096071243286 seconds
+flushed 100000 rows and 575 files in 9.660438776016235 seconds
+flushed 100000 rows and 618 files in 10.305824518203735 seconds
+flushed 100000 rows and 456 files in 8.050954341888428 seconds
+flushed 100000 rows and 316 files in 6.332479238510132 seconds
+flushed 100000 rows and 293 files in 5.932677984237671 seconds
+flushed 100000 rows and 297 files in 5.954922199249268 seconds
+flushed 100000 rows and 302 files in 6.023008108139038 seconds
+flushed 100000 rows and 320 files in 6.437815189361572 seconds
+flushed 100000 rows and 340 files in 6.7036871910095215 seconds
+flushed 100000 rows and 653 files in 10.860777616500854 seconds
+flushed 100000 rows and 566 files in 9.697846174240112 seconds
+flushed 100000 rows and 509 files in 8.910516500473022 seconds
+flushed 100000 rows and 414 files in 7.625535011291504 seconds
+flushed 100000 rows and 493 files in 8.731367349624634 seconds
+flushed 100000 rows and 366 files in 7.656696796417236 seconds
+flushed 100000 rows and 373 files in 7.180020809173584 seconds
+flushed 100000 rows and 359 files in 6.955235719680786 seconds
+flushed 100000 rows and 357 files in 6.889531135559082 seconds
+flushed 100000 rows and 308 files in 6.294888019561768 seconds
+flushed 100000 rows and 331 files in 6.617126941680908 seconds
+flushed 100000 rows and 304 files in 6.184493541717529 seconds
+flushed 100000 rows and 288 files in 5.968321800231934 seconds
+flushed 100000 rows and 266 files in 5.710318088531494 seconds
+```
+
+it performs shockingly well at high partition counts. In reality inserts should never touch more than a few 
+partitions. If doing <10 partitions and using a custom minio cluster, this size could easily push millions of 
+inserts per second. Double up the core count to achieve that with S3.

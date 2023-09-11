@@ -193,9 +193,9 @@ class IceDBv3:
                     raise e
                 if retries >= 3:
                     raise e
+                retries += 1
                 print(f"HTTP exception (code {e.status_code}) uploading part on try {retries}, sleeping "
                       f"{300*retries}ms before retrying")
-                retries += 1
                 sleep(0.3*retries)
             except Exception as e:
                 raise e
