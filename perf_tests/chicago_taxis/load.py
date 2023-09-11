@@ -54,8 +54,7 @@ ice = IceDBv3(
     os.getenv("AWS_KEY_SECRET"),
     os.getenv("AWS_S3_ENDPOINT"),
     s3c,
-    "local-test",
-    max_threads=50
+    "local-test"
 )
 
 # Let's create a row buffer to batch inserts into icedb
