@@ -113,7 +113,7 @@ class IceDBv3:
 
     def __format_lambda(self, row):
         if self.format_row is not None:
-            row = self.format_row(row if self.auto_copy is False else deepcopy(row))
+            row = self.format_row(deepcopy(row) if self.auto_copy and "_partition" in row else row)
         row['_row_id'] = str(uuid4()) if self.unique_row_key is None else row[self.unique_row_key]
         return row
 
@@ -123,7 +123,7 @@ class IceDBv3:
         performance purposes when calculating schema
         """
         if self.format_row is not None:
-            row = self.format_row(row if self.auto_copy is False else deepcopy(row))
+            row = self.format_row(deepcopy(row) if self.auto_copy and "_partition" in row else row)
         row['_row_id'] = "" if self.unique_row_key is None else row[self.unique_row_key]
         return row
 
@@ -225,10 +225,11 @@ class IceDBv3:
         """
         part_map: Dict[str, list[dict]] = {}
         for row in rows:
-            # if self.auto_copy:
-            #     row = deepcopy(row)
             part: str
             if "_partition" in row:
+                if self.auto_copy:
+                    # only copy if we need to delete it
+                    row = deepcopy(row)
                 part = row["_partition"]
                 del row["_partition"]
             else:
