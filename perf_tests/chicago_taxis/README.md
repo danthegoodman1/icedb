@@ -150,7 +150,7 @@ Bytes billed: 64 MB
 ### IceDB
 
 Turns out the downloaded data set is in pretty random order... despite that, it seems that with concurrent uploads 
-it's sub-linear time to upload high partitions counts. The following snippet was from a 16 vCPU machine using 16 
+it's sub-linear time to upload high partitions counts. The following snippet was from a 16 vCPU machine using 50 
 max_threads:
 
 ```
@@ -189,6 +189,23 @@ flushed 100000 rows and 304 files in 6.184493541717529 seconds
 flushed 100000 rows and 288 files in 5.968321800231934 seconds
 flushed 100000 rows and 266 files in 5.710318088531494 seconds
 ```
+
+Did not seem to change with 32 cores are 32 threads:
+```
+flushed 100000 rows and 155 files in 6.7783637046813965 seconds
+flushed 100000 rows and 64 files in 2.9493424892425537 seconds
+flushed 100000 rows and 76 files in 3.001338481903076 seconds
+flushed 100000 rows and 74 files in 2.932624101638794 seconds
+flushed 100000 rows and 58 files in 2.655355930328369 seconds
+flushed 100000 rows and 60 files in 2.8229119777679443 seconds
+flushed 100000 rows and 60 files in 2.8628318309783936 seconds
+flushed 100000 rows and 67 files in 2.8009235858917236 seconds
+flushed 100000 rows and 77 files in 3.0830843448638916 seconds
+flushed 100000 rows and 67 files in 2.8921608924865723 seconds
+flushed 100000 rows and 71 files in 2.9796154499053955 seconds
+```
+
+This indicates that it's a long-tail latency of larger files that are causing the delay
 
 it performs shockingly well at high partition counts. In reality inserts should never touch more than a few 
 partitions. If doing <10 partitions and using a custom minio cluster, this size could easily push millions of 
