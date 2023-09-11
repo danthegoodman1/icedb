@@ -20,11 +20,13 @@ class CompressionCodec(Enum):
 
 
 PartitionFunctionType = Callable[[dict], str]
+FormatRowType = Callable[[dict], dict]
 PartitionRemovalFunctionType = Callable[[list[str]], list[str]]
 
 class IceDBv3:
     partition_function: PartitionFunctionType
     sort_order: List[str]
+    format_row: FormatRowType | None
     s3c: S3Client
     unique_row_key: str | None
     custom_merge_query: str | None
@@ -46,6 +48,7 @@ class IceDBv3:
             s3_endpoint: str,
             s3_client: S3Client,
             path_safe_hostname: str,
+            format_row: FormatRowType = None,
             s3_use_path: bool = False,
             duckdb_ext_dir: str = None,
             custom_merge_query: str = None,
@@ -58,6 +61,7 @@ class IceDBv3:
     ):
         self.partition_function = partition_function
         self.sort_order = sort_order
+        self.format_row = format_row
         self.row_group_size = row_group_size
         self.path_safe_hostname = path_safe_hostname
         self.unique_row_key = unique_row_key
@@ -97,6 +101,24 @@ class IceDBv3:
             ddb.execute(f"SET extension_directory='{self.duckdb_ext_dir}'")
         return ddb
 
+    def __format_lambda(self, row):
+        if self.format_row is not None:
+            # if _partition exists we already copied it
+            row = self.format_row(deepcopy(row) if self.auto_copy and "_partition" not in row else row)
+        row['_row_id'] = str(uuid4()) if self.unique_row_key is None else row[self.unique_row_key]
+        return row
+
+    def __format_lambda_str(self, row):
+        """
+        A version of format_lambda that just uses a string for
+        performance purposes when calculating schema
+        """
+        if self.format_row is not None:
+            # if _partition exists we already copied it
+            row = self.format_row(deepcopy(row) if self.auto_copy and "_partition" not in row else row)
+        row['_row_id'] = "" if self.unique_row_key is None else row[self.unique_row_key]
+        return row
+
     def __get_file_partition(self, full_path: str) -> str:
         base_path = full_path.split("_data/")[1]
         path_parts = base_path.split("/")
@@ -111,11 +133,7 @@ class IceDBv3:
         """
         running_schema = Schema()
 
-        # seed the _row_id column
-        for row in rows:
-            row['_row_id'] = "" if self.unique_row_key is None else row[self.unique_row_key]
-
-        _rows = pa.Table.from_pylist(rows)
+        _rows = pa.Table.from_pylist(list(map(self.__format_lambda_str, rows)))
 
         # get schema
         ddb = self.get_duckdb()
@@ -127,7 +145,6 @@ class IceDBv3:
         return running_schema
 
     def __insert_part(self, part: str, part_ref: list[dict]) -> tuple[FileMarker, Schema]:
-        # print("inserting to s3 at", time())
         running_schema = Schema()
 
         # upload parquet file
@@ -136,12 +153,10 @@ class IceDBv3:
         if self.s3c.s3prefix is not None:
             path_parts = [self.s3c.s3prefix] + path_parts
         fullpath = '/'.join(path_parts)
+        part_rows = list(map(self.__format_lambda, part_ref))
 
-        s = time()
         # py arrow table for inserting into duckdb
-        _rows = pa.Table.from_pylist(part_ref)
-        e = time()
-        print("created rows for part in", e - s, "at", e)
+        _rows = pa.Table.from_pylist(part_rows)
 
         # get schema
         ddb = self.get_duckdb()
@@ -187,7 +202,6 @@ class IceDBv3:
             Bucket=self.s3c.s3bucket,
             Key=fullpath
         )
-        print("inserted", fullpath, "to s3 in", time()-s)
         return FileMarker(fullpath, insert_time, obj['ContentLength']), running_schema
 
     def insert(self, rows: list[dict]) -> list[FileMarker]:
@@ -208,12 +222,9 @@ class IceDBv3:
             else:
                 part = self.partition_function(row)
 
-            row['_row_id'] = str(uuid4()) if self.unique_row_key is None else row[self.unique_row_key]
-
             if part not in part_map:
                 part_map[part] = []
             part_map[part].append(row)
-        print(f"mapped parts in {time()-s}")
 
         running_schema = Schema()
         file_markers: list[FileMarker] = []
@@ -222,22 +233,17 @@ class IceDBv3:
             futures = []
             for part, part_ref in part_map.items():
                 futures.append(executor.submit(self.__insert_part, part, part_ref))
-                # print('spawned thread for part', part)
 
-            # print('awaiting threads')
             for futures in concurrent.futures.as_completed(futures):
                 result: tuple[FileMarker, Schema] = futures.result()
                 # append file marker
                 file_markers.append(result[0])
                 # accumulate schema
                 running_schema.accumulate(result[1].columns(), result[1].types())
-            # print('done processing threads')
 
         # Append to log
         logio = IceLogIO(self.path_safe_hostname)
-        s = time()
         logio.append(self.s3c, 1, running_schema, file_markers)
-        print(f"appended log in {time() - s} seconds")
 
         return file_markers
 
