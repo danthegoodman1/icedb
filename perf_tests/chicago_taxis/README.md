@@ -169,9 +169,19 @@ flushed 12921 rows and 10 files in 0.9287457466125488 seconds
 done in 6661.757550239563 seconds
 ```
 
-Using upload concurrency we can see that it's really just the file size that determines the upload speed. Individual 
-uploads will also be multipart, so doing large batches involving fewer parts will be best for performance. You could 
-probably get above a million rows per second if using larger batches 
+Bumped to batches of 1M, we can see a significant performance increase:
+```
+flushed 1000000 rows and 21 files in 17.91532826423645 seconds
+flushed 1000000 rows and 12 files in 17.58492422103882 seconds
+flushed 1000000 rows and 12 files in 17.568284511566162 seconds
+flushed 1000000 rows and 12 files in 18.191020488739014 seconds
+flushed 1000000 rows and 13 files in 17.931345462799072 seconds
+flushed 1000000 rows and 14 files in 18.225353002548218 seconds
+flushed 1000000 rows and 14 files in 18.443052530288696 seconds
+```
+
+The larger the batches, the more efficient uploads are as compression becomes more effective. Uploads are relatively 
+slow per-fil even with multipart because S3 just doesn't have the same bandwidth
 
 it performs shockingly well at high partition counts. In reality inserts should never touch more than a few 
 partitions. If doing <10 partitions and using a custom minio cluster, this size could easily push millions of 

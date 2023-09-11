@@ -145,7 +145,6 @@ class IceDBv3:
         return running_schema
 
     def __insert_part(self, part: str, part_ref: list[dict]) -> tuple[FileMarker, Schema]:
-        s = time()
         # print("inserting to s3 at", time())
         running_schema = Schema()
 
@@ -172,6 +171,7 @@ class IceDBv3:
                                   list(map(lambda x: str(x), schema_arrow.column('column_type'))))
 
         # copy to parquet file
+        s = time()
         retries = 0
         while retries < 3:
             try:
@@ -207,7 +207,7 @@ class IceDBv3:
             Bucket=self.s3c.s3bucket,
             Key=fullpath
         )
-        # print("inserted", fullpath, "to s3 in", time()-s)
+        print("inserted", fullpath, "to s3 in", time()-s)
         return FileMarker(fullpath, insert_time, obj['ContentLength']), running_schema
 
     def insert(self, rows: list[dict]) -> list[FileMarker]:
@@ -251,7 +251,9 @@ class IceDBv3:
 
         # Append to log
         logio = IceLogIO(self.path_safe_hostname)
+        s = time()
         logio.append(self.s3c, 1, running_schema, file_markers)
+        print(f"appended log in {time() - s} seconds")
 
         return file_markers
 
