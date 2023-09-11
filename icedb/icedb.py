@@ -546,7 +546,8 @@ class IceDBv3:
             fullpath = '/'.join(path_parts)
 
             # Copy the files through the query
-            self.ddb.execute("""
+            ddb = self.get_duckdb()
+            ddb.execute("""
                         copy ({}) to 's3://{}/{}' (format parquet, codec '{}', row_group_size {})
                         """.format(
                 filter_query.replace("_rows", "read_parquet(?)"),
