@@ -110,6 +110,8 @@ class IceDBv3:
         data to be inserted. Must have the expected keys of the partitioning strategy and the sorting order
         """
         running_schema = Schema()
+
+        # seed the _row_id column
         for row in rows:
             row['_row_id'] = "" if self.unique_row_key is None else row[self.unique_row_key]
 
@@ -124,7 +126,7 @@ class IceDBv3:
          str(x), schema_arrow.column('column_type'))))
         return running_schema
 
-    def __insert_part(self, part: str, _rows: pa.Table) -> tuple[FileMarker, Schema]:
+    def __insert_part(self, part: str, part_ref: list[dict]) -> tuple[FileMarker, Schema]:
         # print("inserting to s3 at", time())
         running_schema = Schema()
 
@@ -134,6 +136,11 @@ class IceDBv3:
         if self.s3c.s3prefix is not None:
             path_parts = [self.s3c.s3prefix] + path_parts
         fullpath = '/'.join(path_parts)
+
+        s = time()
+        # py arrow table for inserting into duckdb
+        _rows = pa.Table.from_pylist(part_ref)
+        print("created rows for part in", time() - s)
 
         # get schema
         ddb = self.get_duckdb()
@@ -187,7 +194,7 @@ class IceDBv3:
         Creates one or more files in the destination folder based on the partition strategy :param rows: Rows of JSON
         data to be inserted. Must have the expected keys of the partitioning strategy and the sorting order
         """
-        part_map: Dict[str, pa.Table] = {}
+        part_map: Dict[str, list[dict]] = {}
         s = time()
         for row in rows:
             part: str
@@ -201,10 +208,10 @@ class IceDBv3:
                 part = self.partition_function(row)
 
             row['_row_id'] = str(uuid4()) if self.unique_row_key is None else row[self.unique_row_key]
+
             if part not in part_map:
-                part_map[part] = pa.Table.from_pylist([row])
-            else:
-                part_map[part] = pa.concat_tables([part_map[part], pa.Table.from_pylist([row])])
+                part_map[part] = []
+            part_map[part].append(row)
         print(f"mapped parts in {time()-s}")
 
         running_schema = Schema()

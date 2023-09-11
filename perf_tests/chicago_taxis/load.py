@@ -29,7 +29,7 @@ csv_headers = [
     'Dropoff Centroid  Location'
 ]
 
-flush_limit = 1_000_000
+flush_limit = 100_000
 
 def part_func(row: dict) -> str:
     # Normally you should parse this with datetime package and
