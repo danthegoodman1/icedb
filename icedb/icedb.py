@@ -156,12 +156,12 @@ class IceDBv3:
         fullpath = '/'.join(path_parts)
         s = time()
         part_rows = list(map(self.__format_lambda, part_ref))
-        # print("ran lambdas on part in", time() - s)
+        print("ran lambdas on part in", time() - s)
 
         s = time()
         # py arrow table for inserting into duckdb
         _rows = pa.Table.from_pylist(part_rows)
-        # print("created rows for part in", time() - s)
+        print("created rows for part in", time() - s)
 
         # get schema
         ddb = self.get_duckdb()
@@ -216,6 +216,7 @@ class IceDBv3:
         data to be inserted. Must have the expected keys of the partitioning strategy and the sorting order
         """
         part_map: Dict[str, list[dict]] = {}
+        s = time()
         for row in rows:
             part: str
             if "_partition" in row:
@@ -230,6 +231,7 @@ class IceDBv3:
             if part not in part_map:
                 part_map[part] = []
             part_map[part].append(row)
+        print(f"mapped parts in {time()-s}")
 
         running_schema = Schema()
         file_markers: list[FileMarker] = []
