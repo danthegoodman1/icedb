@@ -113,7 +113,7 @@ class IceDBv3:
 
     def __format_lambda(self, row):
         if self.format_row is not None:
-            row = self.format_row(row)
+            row = self.format_row(row if self.auto_copy is False else deepcopy(row))
         row['_row_id'] = str(uuid4()) if self.unique_row_key is None else row[self.unique_row_key]
         return row
 
@@ -123,7 +123,7 @@ class IceDBv3:
         performance purposes when calculating schema
         """
         if self.format_row is not None:
-            row = self.format_row(row)
+            row = self.format_row(row if self.auto_copy is False else deepcopy(row))
         row['_row_id'] = "" if self.unique_row_key is None else row[self.unique_row_key]
         return row
 
@@ -180,11 +180,11 @@ class IceDBv3:
                                   list(map(lambda x: str(x), schema_arrow.column('column_type'))))
 
         # copy to parquet file
-        retires = 0
-        while retires < 3:
+        retries = 0
+        while retries < 3:
             try:
-                # if retires > 0:
-                    # print(f"retrying duckdb s3 upload try {retires}")
+                # if retries > 0:
+                    # print(f"retrying duckdb s3 upload try {retries}")
                 ddb.execute("""
                             copy ({}) to 's3://{}/{}' (format parquet, codec '{}', row_group_size {})
                             """.format(
@@ -199,12 +199,12 @@ class IceDBv3:
             except duckdb.HTTPException as e:
                 if e.status_code < 500:
                     raise e
-                if retires >= 3:
+                if retries >= 3:
                     raise e
-                print(f"HTTP exception (code {e.status_code}) uploading part on try {retires}, sleeping "
-                      f"{300*retires}ms before retrying")
-                retires += 1
-                sleep(0.3*retires)
+                print(f"HTTP exception (code {e.status_code}) uploading part on try {retries}, sleeping "
+                      f"{300*retries}ms before retrying")
+                retries += 1
+                sleep(0.3*retries)
             except Exception as e:
                 raise e
 
@@ -225,15 +225,15 @@ class IceDBv3:
         """
         part_map: Dict[str, list[dict]] = {}
         for row in rows:
-            if self.auto_copy:
-                row = deepcopy(row)
-            # part: str
-            # if "_partition" in row:
-            #     part = row["_partition"]
-            #     del row["_partition"]
-            # else:
-            #     part = self.partition_function(row)
-            part = self.partition_function(row)
+            # if self.auto_copy:
+            #     row = deepcopy(row)
+            part: str
+            if "_partition" in row:
+                part = row["_partition"]
+                del row["_partition"]
+            else:
+                part = self.partition_function(row)
+
             if part not in part_map:
                 part_map[part] = []
             part_map[part].append(row)
