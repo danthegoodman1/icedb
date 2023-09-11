@@ -227,13 +227,13 @@ class IceDBv3:
         for row in rows:
             if self.auto_copy:
                 row = deepcopy(row)
-            part: str
-            if "_partition" in row:
-                part = row["_partition"]
-                del row["_partition"]
-            else:
-                part = self.partition_function(row)
-
+            # part: str
+            # if "_partition" in row:
+            #     part = row["_partition"]
+            #     del row["_partition"]
+            # else:
+            #     part = self.partition_function(row)
+            part = self.partition_function(row)
             if part not in part_map:
                 part_map[part] = []
             part_map[part].append(row)
