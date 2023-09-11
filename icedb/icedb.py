@@ -140,7 +140,8 @@ class IceDBv3:
         s = time()
         # py arrow table for inserting into duckdb
         _rows = pa.Table.from_pylist(part_ref)
-        print("created rows for part in", time() - s)
+        e = time()
+        print("created rows for part in", e - s, "at", e)
 
         # get schema
         ddb = self.get_duckdb()
