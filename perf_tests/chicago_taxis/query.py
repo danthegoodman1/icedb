@@ -5,8 +5,7 @@ def query(q: str):
     """
     Queries all parquet files through the IceDB S3 proxy, uses a constant virtual bucket
     """
-    print(q.replace("tbl", f"""
-    from s3('{os.getenv("S3_PROXY_URL")}/fake_bucket/**/*.parquet', 'Parquet')"""))
+    print(q.replace("tbl", f"""s3('{os.getenv("S3_PROXY_URL")}/fake_bucket/**/*.parquet', 'Parquet')"""))
 
 # toDate(extract(_path, 'd=(\\w+)/')) AS trip_start_date
 
