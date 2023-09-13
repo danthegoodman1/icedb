@@ -31,8 +31,8 @@ ice = IceDBv3(
 start = time()
 while True:
     s = time()
-    _, _, partition, merged_file_markers, _ = ice.merge(max_file_size=100_000_000, max_file_count=40)
-    if partition is None:
+    _, _, deleted_data = ice.tombstone_cleanup(0)
+    if deleted_data is None:
         break
-    print(f"Merged partition {partition} with {len(merged_file_markers)} files in {time()-s} seconds")
+    print(f"Tombstone cleaned {len(deleted_data)} data files in {time()-s} seconds")
 print(f"done in {time()-s} seconds")
