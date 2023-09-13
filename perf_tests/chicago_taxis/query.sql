@@ -1,11 +1,14 @@
 select *
-from s3('http://localhost:8080/fake_bucket/**/*.parquet', 'Parquet')
-limit 1000
+from s3('https://s3.us-east-1.amazonaws.com/icedb-test-tangia-staging/chicago_taxis/_data/**/*.parquet')
+limit 1000 Format Null
+
+select count()
+from s3('https://s3.us-east-1.amazonaws.com/icedb-test-tangia-staging/chicago_taxis/_data/**/*.parquet')
 
 
 with toDate(extract(_path, 'd=(\w+)/')) AS trip_start_date
 SELECT count() as cnt, date_trunc('month', trip_start_date) as mnth
-FROM s3('http://localhost:8080/fake_bucket/**/*.parquet', 'Parquet')
+FROM s3('https://s3.us-east-1.amazonaws.com/icedb-test-tangia-staging/chicago_taxis/_data/**/*.parquet', 'Parquet')
 group by mnth
 order by mnth desc
 
@@ -22,7 +25,7 @@ select * from (
     , quantile(trip_miles) as med_trip_miles
     , avg(trip_miles) as avg_trip_miles
     , date_trunc(trip_start_date, MONTH) as mnth
-  FROM s3('http://localhost:8080/fake_bucket/**/*.parquet', 'Parquet')
+  FROM s3('https://s3.us-east-1.amazonaws.com/icedb-test-tangia-staging/chicago_taxis/_data/**/*.parquet', 'Parquet')
   group by mnth
 ) order by mnth desc
 
@@ -30,7 +33,7 @@ select * from (
 SELECT
   count()
   , payment_type
-FROM s3('http://localhost:8080/fake_bucket/**/*.parquet', 'Parquet')
+FROM s3('https://s3.us-east-1.amazonaws.com/icedb-test-tangia-staging/chicago_taxis/_data/**/*.parquet', 'Parquet')
 group by payment_type
 order by count() desc
 
@@ -40,7 +43,7 @@ SELECT
   count(*)
   , payment_type
   , toMonth(trip_start_date) as mnth
-FROM s3('http://localhost:8080/fake_bucket/**/*.parquet', 'Parquet')
+FROM s3('https://s3.us-east-1.amazonaws.com/icedb-test-tangia-staging/chicago_taxis/_data/**/*.parquet', 'Parquet')
 where mnth = 8
 group by payment_type, mnth
 order by count(*) desc

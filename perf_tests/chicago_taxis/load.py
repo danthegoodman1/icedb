@@ -36,10 +36,10 @@ def part_func(row: dict) -> str:
     # verify it, but we know the data is good, so we'll just short circuit it
     trip_start = row['Trip Start Timestamp']
     if trip_start[4] == '-': # 2015-05-07 20:30:00 UTC
-        return '-'.join(trip_start.split('-')[:2])  # 2015-05-07
+        return "d=" + '-'.join(trip_start.split('-')[:2])  # 2015-05-07
     else:
         dt = datetime.strptime(trip_start, '%m/%d/%Y %H:%M:%S %p')  # 05/09/2014 07:30:00 PM
-        return dt.strftime("%Y-%m")
+        return dt.strftime("d=%Y-%m")
 
 
 s3c = S3Client(s3prefix="chicago_taxis_1m", s3bucket=os.getenv("AWS_S3_BUCKET"), s3region=os.getenv("AWS_S3_REGION"),

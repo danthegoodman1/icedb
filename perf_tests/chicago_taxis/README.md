@@ -196,4 +196,40 @@ inserts per second. Double up the core count to achieve that with S3.
 I won't get hung up on this any longer as I know there are many optimizations to make it many times faster, and that 
 you can just add more instances of IceDB and parallelize even more (only real limit is S3 rate limit), but it's 
 probably faster than you can send to bigquery anyway through their rows-like API :P. Overall I'm quite happy with 
-this, and am already planning lots of optimizations! 
+this, and am already planning lots of optimizations!
+
+#### Queries (pre merge, direct file access, m7a.8xlarge 32vCPU 128GB ram)
+
+```
+SELECT *
+FROM s3('https://s3.us-east-1.amazonaws.com/icedb-test-tangia-staging/chicago_taxis/_data/**/*.parquet')
+LIMIT 1000
+FORMAT `Null`
+
+Query id: 8b54b206-a426-42d8-9416-1c0a60599c8f
+
+Ok.
+
+0 rows in set. Elapsed: 0.408 sec. Processed 8.19 thousand rows, 5.38 MB (20.07 thousand rows/s., 13.18 MB/s.)
+Peak memory usage: 9.95 MiB.
+```
+
+```
+SELECT *
+FROM s3('https://s3.us-east-1.amazonaws.com/icedb-test-tangia-staging/chicago_taxis/_data/**/*.parquet')
+LIMIT 1000
+FORMAT `Null`
+
+Query id: ad6843d4-9778-418e-b877-f590cc0ca18b
+
+Ok.
+
+0 rows in set. Elapsed: 0.413 sec. Processed 8.19 thousand rows, 5.38 MB (19.82 thousand rows/s., 13.02 MB/s.)
+Peak memory usage: 9.95 MiB.
+```
+
+Hmmmm... 5.38MB with ClickHouse vs. 75GB from BigQuery...
+
+```
+
+```
