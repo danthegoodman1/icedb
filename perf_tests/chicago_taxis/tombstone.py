@@ -32,7 +32,7 @@ start = time()
 while True:
     s = time()
     _, _, deleted_data = ice.tombstone_cleanup(0)
-    if deleted_data is None:
+    if deleted_data != 0:
         break
     print(f"Tombstone cleaned {len(deleted_data)} data files in {time()-s} seconds")
 print(f"done in {time()-start} seconds")
