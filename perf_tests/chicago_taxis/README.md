@@ -381,4 +381,8 @@ Merge performance seems to be entirely based on data size, as there is no differ
 and 3 larger files. The time was actually due to reading the massive log, as running an empty merge takes 16.21 
 seconds :P. This indicates to me that the time to actually process files for merging was far sub-second.
 
-#### Queries (post merge, direct file access, m7a.32xlarge 128vCPU) 
+#### Queries (post merge and tombstone clean (2x), direct file access, m7a.32xlarge 128vCPU)
+
+Tombstone cleaning was run twice to make sure that all the old log files were cleaned up as well. This is fully 
+optimized, which is a more fair comparison to BigQuery as that dataset will have been fully merged and optimized as 
+well.

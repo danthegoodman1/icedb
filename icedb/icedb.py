@@ -374,6 +374,7 @@ class IceDBv3:
 
             # Delete log tombstones
             for log_path in log_files_to_delete:
+                print('Deleting log file', log_path)
                 self.s3c.s3.delete_object(
                     Bucket=self.s3c.s3bucket,
                     Key=log_path
@@ -383,6 +384,7 @@ class IceDBv3:
             file_markers_to_delete: list[FileMarker] = list(filter(lambda x: x.createdMS <= now - min_age_ms and
                                                                              x.tombstone is not None, file_markers))
             for data_path in file_markers_to_delete:
+                print('Deleting data file', data_path   )
                 self.s3c.s3.delete_object(
                     Bucket=self.s3c.s3bucket,
                     Key=data_path.path
