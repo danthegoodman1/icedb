@@ -518,3 +518,21 @@ Peak memory usage: 17.35 MiB.
 As we can see the queries that benefit from the partitioning have the largest speed difference. But otherwise 
 queries remain about the same performance due to a large row group size in the parquet files. In fact, due to this 
 large size more files is actually a bit faster to go through because there can be slightly more concurrency!
+
+#### Queries (post merge and tombstone clean, 8192 row group size, direct file access, m7a.32xlarge 128vCPU)
+
+Next lets look what happens if we use smaller row groups (similar to clickhouse index granularity)
+
+### Conclusion
+
+Use custom minio clusters on local nvmes with 100gbit nics if you want IceDB + ClickHouse to beat out BigQuery, 
+especially if you use BigHouse (run clickhouse like bigquery)! With minio, you should expect to see multiple times 
+speed boosts on query performance, but it's a lot more to manage than S3 of course. As illustrated in 
+https://altinity.com/blog/clickhouse-object-storage-performance-minio-vs-aws-s3 we can see that querying with 16 
+cores to minio is faster than 64 to S3 💀.
+
+**Ultimately comparing queries on S3 + ClickHouse using IceDB vs BigQuery, BigQuery loses in price/performance by a lot.**
+
+For example even just the same data set size, S3 doesn't charge egress in the same region, so a query that executes 
+in <5s on ClickHouse using a 128vCPU machine costs less than a cent, where a comparable BigQuery one might take one 
+second but read 77GB, costing ~$0.54. That's >54x more expensive to run a query on BigQuery. 
