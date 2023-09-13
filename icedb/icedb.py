@@ -358,19 +358,19 @@ class IceDBv3:
             meta = LogMetadataFromJSON(meta_json)
 
             # Log tombstones
-            log_files_to_delete: list[str] = []
+            log_files_to_delete: dict[str, bool] = {}
             if meta.tombstoneLineIndex is not None:
                 for i in range(meta.tombstoneLineIndex, meta.fileLineIndex):
                     tmb = LogTombstoneFromJSON(dict(json.loads(jsonl[i])))
                     if tmb.createdMS <= now - min_age_ms:
-                        log_files_to_delete.append(tmb.path)
+                        log_files_to_delete[tmb.path] = True
 
             # File markers
-            file_markers: list[FileMarker] = []
+            file_markers: dict[str, FileMarker] = {}
             for i in range(meta.fileLineIndex, len(jsonl)):
                 fm_json = dict(json.loads(jsonl[i]))
                 fm = FileMarkerFromJSON(fm_json)
-                file_markers.append(fm)
+                file_markers[fm.path] = fm
 
             # Delete log tombstones
             for log_path in log_files_to_delete:
@@ -382,9 +382,10 @@ class IceDBv3:
 
             # Delete data tombstones
             file_markers_to_delete: list[FileMarker] = list(filter(lambda x: x.createdMS <= now - min_age_ms and
-                                                                             x.tombstone is not None, file_markers))
+                                                                             x.tombstone is not None,
+                                                                   file_markers.values()))
             for data_path in file_markers_to_delete:
-                print('Deleting data file', data_path   )
+                print('Deleting data file', data_path)
                 self.s3c.s3.delete_object(
                     Bucket=self.s3c.s3bucket,
                     Key=data_path.path
@@ -398,13 +399,13 @@ class IceDBv3:
                 self.s3c,
                 1,
                 schema,
-                list(filter(lambda x: x.tombstone is None or x.createdMS > now - min_age_ms, file_markers)),
+                list(filter(lambda x: x.tombstone is None or x.createdMS > now - min_age_ms, file_markers.values())),
                 None,
                 merged=True,
                 timestamp=meta.timestamp
             )
             cleaned_log_files.append(file['Key'])
-            deleted_log_files += log_files_to_delete
+            deleted_log_files += log_files_to_delete.keys()
             deleted_data_files += list(map(lambda x: x.path, file_markers_to_delete))
 
         return cleaned_log_files, deleted_log_files, deleted_data_files
