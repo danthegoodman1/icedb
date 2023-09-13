@@ -35,4 +35,4 @@ while True:
     if partition is None:
         break
     print(f"Merged partition {partition} with {len(merged_file_markers)} files in {time()-s} seconds")
-print(f"done in {time()-s} seconds")
+print(f"done in {time()-start} seconds")
