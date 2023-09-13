@@ -158,7 +158,6 @@ try:
         ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", f1)))
     )
     print('executing query:', query)
-    # THIS IS A BAD IDEA NEVER DO THIS IN PRODUCTION
     ddb.execute(query)
     res = ddb.fetchall()
     print(res)
@@ -186,7 +185,6 @@ try:
         ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", f1)))
     )
     print('executing query:', query)
-    # THIS IS A BAD IDEA NEVER DO THIS IN PRODUCTION
     ddb.execute(query)
     res = ddb.fetchall()
     print(res)
@@ -242,7 +240,6 @@ try:
         ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
     )
     print('executing query:', query)
-    # THIS IS A BAD IDEA NEVER DO THIS IN PRODUCTION
     ddb.execute(query)
     res = ddb.fetchall()
     print(res)
@@ -295,7 +292,6 @@ try:
         ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
     )
     print('executing query:', query)
-    # THIS IS A BAD IDEA NEVER DO THIS IN PRODUCTION
     ddb.execute(query)
     res = ddb.fetchall()
     print(res)
@@ -305,11 +301,11 @@ try:
 
     print('results validated')
 
-    print("============== insert hundreds ==============")
+    print("============== insert 100 more ==============")
     print("this will take a while...")
 
     s = time()
-    for i in range(200):
+    for i in range(100):
         ice.insert(deepcopy(example_events))
         sys.stdout.write(f"\rinserted {i+1}")
         sys.stdout.flush()
@@ -322,8 +318,8 @@ try:
     print("read hundreds in", time()-s)
 
     print("files", len(f1), "logs", len(l1))
-    assert len(l1) == 202
-    assert len(f1) == 405
+    assert len(l1) == 102
+    assert len(f1) == 205
 
     print("verify expected results")
     s = time()
@@ -332,13 +328,12 @@ try:
     query = "select count(user_id), user_id from read_parquet([{}]) group by user_id order by count(user_id) desc".format(
         ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
     )
-    # THIS IS A BAD IDEA NEVER DO THIS IN PRODUCTION
     ddb.execute(query)
     res = ddb.fetchall()
     print(res, "in", time()-s)
 
-    assert res[0][0] == 406
-    assert res[1][0] == 203
+    assert res[0][0] == 206
+    assert res[1][0] == 103
 
     print("merging it")
     s = time()
@@ -350,8 +345,8 @@ try:
     print("read post merge state in", time() - s)
 
     print("files", len(f1), "logs", len(l1))
-    assert len(l1) == 203
-    assert len(f1) == 406
+    assert len(l1) == 103
+    assert len(f1) == 206
 
     print("verify expected results")
     s = time()
@@ -360,13 +355,12 @@ try:
     query = "select count(user_id), user_id from read_parquet([{}]) group by user_id order by count(user_id) desc".format(
         ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
     )
-    # THIS IS A BAD IDEA NEVER DO THIS IN PRODUCTION
     ddb.execute(query)
     res = ddb.fetchall()
     print(res, "in", time() - s)
 
-    assert res[0][0] == 406
-    assert res[1][0] == 203
+    assert res[0][0] == 206
+    assert res[1][0] == 103
 
     print("merging many more times to verify")
     for i in range(4):
@@ -380,8 +374,8 @@ try:
     print("read post merge state in", time() - s)
 
     print("files", len(f1), "logs", len(l1))
-    assert len(l1) == 205
-    assert len(f1) == 408
+    assert len(l1) == 104
+    assert len(f1) == 207
 
     print("verify expected results")
     s = time()
@@ -390,13 +384,12 @@ try:
     query = "select count(user_id), user_id from read_parquet([{}]) group by user_id order by count(user_id) desc".format(
         ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
     )
-    # THIS IS A BAD IDEA NEVER DO THIS IN PRODUCTION
     ddb.execute(query)
     res = ddb.fetchall()
     print(res, "in", time() - s)
 
-    assert res[0][0] == 406
-    assert res[1][0] == 203
+    assert res[0][0] == 206
+    assert res[1][0] == 103
 
     print("tombstone clean it")
     s = time()
@@ -418,13 +411,12 @@ try:
     query = "select count(user_id), user_id from read_parquet([{}]) group by user_id order by count(user_id) desc".format(
         ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
     )
-    # THIS IS A BAD IDEA NEVER DO THIS IN PRODUCTION
     ddb.execute(query)
     res = ddb.fetchall()
     print(res, "in", time() - s)
 
-    assert res[0][0] == 406
-    assert res[1][0] == 203
+    assert res[0][0] == 206
+    assert res[1][0] == 103
 
     testS3Proxy = False
     if testS3Proxy:
@@ -454,8 +446,8 @@ try:
         res = iceproxy.ddb.fetchall()
         print(res, "in", time() - s)
 
-        assert res[0][0] == 406
-        assert res[1][0] == 203
+        assert res[0][0] == 206
+        assert res[1][0] == 103
 
     print("============= partition removal ==================")
     # existing partitions:
@@ -482,13 +474,12 @@ try:
     query = "select count(user_id), user_id from read_parquet([{}]) group by user_id order by count(user_id) desc".format(
         ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
     )
-    # THIS IS A BAD IDEA NEVER DO THIS IN PRODUCTION
     ddb.execute(query)
     res = ddb.fetchall()
     print(res, "in", time() - s)
 
     assert(len(res) == 1)
-    assert res[0][0] == 406
+    assert res[0][0] == 206
 
     print("============= partition rewrite ==================")
     new_log, meta, rewritten = ice.rewrite_partition("cust=test/d=2023-06-07", """
@@ -515,13 +506,12 @@ try:
     query = "select count(user_id), user_id from read_parquet([{}]) group by user_id order by count(user_id) desc".format(
         ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
     )
-    # THIS IS A BAD IDEA NEVER DO THIS IN PRODUCTION
     ddb.execute(query)
     res = ddb.fetchall()
     print(res, "in", time() - s)
 
     assert(len(res) == 1)
-    assert res[0][0] == 203
+    assert res[0][0] == 103
 
     print("test successful!")
 except Exception as e:

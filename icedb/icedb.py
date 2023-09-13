@@ -345,6 +345,11 @@ class IceDBv3:
         deleted_data_files: list[str] = []
         now = round(time() * 1000)
 
+        log_files_to_delete: dict[str, bool] = {}
+        data_files_to_delete: dict[str, bool] = {}
+        data_files_to_keep: dict[str, FileMarker] = {}
+        schema = Schema()
+
         current_log_files = logio.get_current_log_files(self.s3c)
         # We only need to get merge files
         merge_log_files = list(filter(lambda x: get_log_file_info(x['Key'])[1], current_log_files))
@@ -358,7 +363,6 @@ class IceDBv3:
             meta = LogMetadataFromJSON(meta_json)
 
             # Log tombstones
-            log_files_to_delete: dict[str, bool] = {}
             if meta.tombstoneLineIndex is not None:
                 for i in range(meta.tombstoneLineIndex, meta.fileLineIndex):
                     tmb = LogTombstoneFromJSON(dict(json.loads(jsonl[i])))
@@ -366,46 +370,59 @@ class IceDBv3:
                         log_files_to_delete[tmb.path] = True
 
             # File markers
-            file_markers: dict[str, FileMarker] = {}
             for i in range(meta.fileLineIndex, len(jsonl)):
                 fm_json = dict(json.loads(jsonl[i]))
                 fm = FileMarkerFromJSON(fm_json)
-                file_markers[fm.path] = fm
+                if fm.createdMS <= now - min_age_ms and fm.tombstone is not None:
+                    data_files_to_delete[fm.path] = True
+                    if fm.path in data_files_to_keep:
+                        del data_files_to_keep[fm.path]
+                else:
+                    data_files_to_keep[fm.path] = fm
 
-            # Delete log tombstones
-            for log_path in log_files_to_delete:
-                self.s3c.s3.delete_object(
-                    Bucket=self.s3c.s3bucket,
-                    Key=log_path
-                )
-
-            # Delete data tombstones
-            file_paths_to_delete: list[str] = list(map(lambda x: x.path, filter(lambda x: x.createdMS <= now -
-                                                                                          min_age_ms and
-                                                                             x.tombstone is not None,
-                                                                   file_markers.values())))
-            for data_path in file_paths_to_delete:
-                self.s3c.s3.delete_object(
-                    Bucket=self.s3c.s3bucket,
-                    Key=data_path
-                )
-
-            # Upsert log file
-            schema = Schema()
+            # Accumulate schema
             schema_json = dict(json.loads(jsonl[meta.schemaLineIndex]))
             schema.accumulate(list(schema_json.keys()), list(schema_json.values()))
-            new_log, _ = logio.append(
-                self.s3c,
-                1,
-                schema,
-                list(filter(lambda x: x.tombstone is None or x.createdMS > now - min_age_ms, file_markers.values())),
-                None,
-                merged=True,
-                timestamp=meta.timestamp
-            )
+
             cleaned_log_files.append(file['Key'])
-            deleted_log_files += log_files_to_delete.keys()
-            deleted_data_files += file_paths_to_delete
+
+        # Delete log tombstones
+        for log_path in log_files_to_delete.keys():
+            self.s3c.s3.delete_object(
+                Bucket=self.s3c.s3bucket,
+                Key=log_path
+            )
+            deleted_log_files.append(log_path)
+
+        # Delete data files
+        for data_path in data_files_to_delete.keys():
+            self.s3c.s3.delete_object(
+                Bucket=self.s3c.s3bucket,
+                Key=data_path
+            )
+            deleted_log_files.append(data_path)
+
+
+
+        # New log file
+        new_log, _ = logio.append(
+            self.s3c,
+            1,
+            schema,
+            list(data_files_to_keep.values()),
+            None,
+            merged=True,
+            timestamp=round(time()*1000)
+        )
+        deleted_log_files += log_files_to_delete.keys()
+        deleted_data_files += data_files_to_delete
+        # Delete the cleaned log files
+        for path in cleaned_log_files:
+            self.s3c.s3.delete_object(
+                Bucket=self.s3c.s3bucket,
+                Key=path
+            )
+        print(f"Keeping {len(data_files_to_keep)} files")
 
         return cleaned_log_files, deleted_log_files, deleted_data_files
 
