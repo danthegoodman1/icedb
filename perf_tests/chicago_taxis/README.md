@@ -378,6 +378,7 @@ Merged partition d=2017-02 with 3 files in 15.94778323173523 seconds
 ```
 
 Merge performance seems to be entirely based on data size, as there is no difference between merging 30 small files 
-and 3 larger files. I suspect there are optimizations for merge performance as this is unexpectedly poor.
+and 3 larger files. The time was actually due to reading the massive log, as running an empty merge takes 16.21 
+seconds :P. This indicates to me that the time to actually process files for merging was far sub-second.
 
 #### Queries (post merge, direct file access, m7a.32xlarge 128vCPU) 

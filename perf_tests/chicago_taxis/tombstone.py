@@ -35,4 +35,4 @@ while True:
     if deleted_data is None:
         break
     print(f"Tombstone cleaned {len(deleted_data)} data files in {time()-s} seconds")
-print(f"done in {time()-s} seconds")
+print(f"done in {time()-start} seconds")
