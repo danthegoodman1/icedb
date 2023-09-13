@@ -381,14 +381,15 @@ class IceDBv3:
                 )
 
             # Delete data tombstones
-            file_markers_to_delete: list[FileMarker] = list(filter(lambda x: x.createdMS <= now - min_age_ms and
+            file_paths_to_delete: list[str] = list(map(lambda x: x.path, filter(lambda x: x.createdMS <= now -
+                                                                                          min_age_ms and
                                                                              x.tombstone is not None,
-                                                                   file_markers.values()))
-            for data_path in file_markers_to_delete:
+                                                                   file_markers.values())))
+            for data_path in file_paths_to_delete:
                 print('Deleting data file', data_path)
                 self.s3c.s3.delete_object(
                     Bucket=self.s3c.s3bucket,
-                    Key=data_path.path
+                    Key=data_path
                 )
 
             # Upsert log file
@@ -406,7 +407,7 @@ class IceDBv3:
             )
             cleaned_log_files.append(file['Key'])
             deleted_log_files += log_files_to_delete.keys()
-            deleted_data_files += list(map(lambda x: x.path, file_markers_to_delete))
+            deleted_data_files += file_paths_to_delete
 
         return cleaned_log_files, deleted_log_files, deleted_data_files
 
