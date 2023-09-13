@@ -349,8 +349,6 @@ class IceDBv3:
         # We only need to get merge files
         merge_log_files = list(filter(lambda x: get_log_file_info(x['Key'])[1], current_log_files))
         for file in merge_log_files:
-            s = time()
-            print('tombstone cleaning', file['Key'])
             obj = self.s3c.s3.get_object(
                 Bucket=self.s3c.s3bucket,
                 Key=file['Key']
@@ -408,7 +406,6 @@ class IceDBv3:
             cleaned_log_files.append(file['Key'])
             deleted_log_files += log_files_to_delete.keys()
             deleted_data_files += file_paths_to_delete
-            print(f"tombstone cleaned {file['Key']} in {time()-s} seconds")
 
         return cleaned_log_files, deleted_log_files, deleted_data_files
 
