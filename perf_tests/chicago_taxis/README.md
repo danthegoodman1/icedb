@@ -375,11 +375,12 @@ Merged partition d=2017-12 with 31 files in 16.494601249694824 seconds
 Merged partition d=2017-12 with 2 files in 14.961239576339722 seconds
 Merged partition d=2017-02 with 30 files in 15.911055326461792 seconds
 Merged partition d=2017-02 with 3 files in 15.94778323173523 seconds
+done in 4712.57857465744 seconds
 ```
 
-Merge performance seems to be entirely based on data size, as there is no difference between merging 30 small files 
-and 3 larger files. The time was actually due to reading the massive log, as running an empty merge takes 16.21 
-seconds :P. This indicates to me that the time to actually process files for merging was far sub-second.
+Merge performance here seems to be entirely based on log size, as there is no difference between merging 30 small files 
+and 3 larger files. Running an empty merge takes 16.21 seconds :P. This indicates to me that the time to actually 
+process files for merging even 40 files was well beyond sub-second.
 
 Files were kept at a max size ~100MB.
 
@@ -523,13 +524,150 @@ large size more files is actually a bit faster to go through because there can b
 
 Next lets look what happens if we use smaller row groups (similar to clickhouse index granularity)
 
+```
+WITH parseDateTime(CAST(extract(_path, 'd=([^\\/]+)'), 'String'), '%Y-%m') AS mnth
+SELECT
+    count() AS cnt,
+    mnth
+FROM s3('https://s3.us-east-1.amazonaws.com/icedb-test-tangia-staging/chicago_taxis_1m/_data/**/*.parquet')
+GROUP BY mnth
+ORDER BY mnth DESC
+FORMAT `Null`
+
+Query id: 10256598-69ce-4c4f-9ff8-9601a6d0d6c4
+
+Ok.
+
+0 rows in set. Elapsed: 0.205 sec. Processed 209.51 million rows, 0.00 B (1.02 billion rows/s., 0.00 B/s.)
+Peak memory usage: 946.42 KiB.
+```
+
+Now we're talking, that was with 16 cores... lets bump it to 128
+
+```
+WITH parseDateTime(CAST(extract(_path, 'd=([^\\/]+)'), 'String'), '%Y-%m') AS mnth
+SELECT
+    count() AS cnt,
+    mnth
+FROM s3('https://s3.us-east-1.amazonaws.com/icedb-test-tangia-staging/chicago_taxis_1m_8k/_data/**/*.parquet')
+GROUP BY mnth
+ORDER BY mnth DESC
+FORMAT `Null`
+
+Query id: 2a97d5ca-f5af-4bad-92bb-69070f73ffad
+
+Ok.
+
+0 rows in set. Elapsed: 0.162 sec. Processed 209.51 million rows, 0.00 B (1.29 billion rows/s., 0.00 B/s.)
+Peak memory usage: 4.69 MiB.
+```
+
+Kachow
+
+```
+WITH parseDateTime(CAST(extract(_path, 'd=([^\\/]+)'), 'String'), '%Y-%m') AS trip_start_date
+SELECT *
+FROM
+(
+    SELECT
+        quantile(toInt64(Fare)) AS med_fare,
+        avg(toInt64(Fare)) AS avg_fare,
+        quantile(toInt64(Tips)) AS med_tips,
+        avg(toInt64(Tips)) AS avg_tips,
+        quantile(toInt64(`Trip Seconds`)) AS med_trip_seconds,
+        avg(toInt64(`Trip Seconds`)) AS avg_trip_seconds,
+        quantile(toInt64(`Trip Miles`)) AS med_trip_miles,
+        avg(toInt64(`Trip Miles`)) AS avg_trip_miles,
+        date_trunc('month', trip_start_date) AS mnth
+    FROM s3('https://s3.us-east-1.amazonaws.com/icedb-test-tangia-staging/chicago_taxis_1m_8k/_data/**/*.parquet')
+    GROUP BY mnth
+)
+ORDER BY mnth DESC
+FORMAT `Null`
+
+Query id: 4bca752c-03a7-4e57-a5b7-1dadf0fa289d
+
+Ok.
+
+0 rows in set. Elapsed: 5.874 sec. Processed 209.51 million rows, 11.36 GB (35.67 million rows/s., 1.93 GB/s.)
+Peak memory usage: 478.98 MiB.
+```
+
+```
+SELECT
+    count(),
+    `Payment Type`
+FROM s3('https://s3.us-east-1.amazonaws.com/icedb-test-tangia-staging/chicago_taxis_1m_8k/_data/**/*.parquet')
+GROUP BY `Payment Type`
+ORDER BY count() DESC
+FORMAT `Null`
+
+Query id: 558b8b39-ec74-429f-83bc-8806c5b37dc0
+
+Ok.
+
+0 rows in set. Elapsed: 2.866 sec. Processed 209.51 million rows, 3.54 GB (73.10 million rows/s., 1.24 GB/s.)
+Peak memory usage: 194.03 MiB.
+```
+
+```
+WITH parseDateTime(CAST(extract(_path, 'd=([^\\/]+)'), 'String'), '%Y-%m') AS trip_start_date
+SELECT
+    count(*),
+    `Payment Type`,
+    toMonth(trip_start_date) AS mnth
+FROM s3('https://s3.us-east-1.amazonaws.com/icedb-test-tangia-staging/chicago_taxis_1m_8k/_data/**/*.parquet')
+WHERE mnth = 8
+GROUP BY
+    `Payment Type`,
+    mnth
+ORDER BY count(*) DESC
+FORMAT `Null`
+
+Query id: 04513d20-5f55-4620-ac45-7ebc33ebe21e
+
+Ok.
+
+0 rows in set. Elapsed: 1.765 sec. Processed 17.91 million rows, 301.77 MB (10.15 million rows/s., 171.02 MB/s.)
+Peak memory usage: 20.36 MiB.
+```
+
+```
+WITH parseDateTime(CAST(extract(_path, 'd=([^\\/]+)'), 'String'), '%Y-%m') AS trip_start_date
+SELECT
+    count(),
+    `Payment Type`,
+    toMonth(trip_start_date) AS mnth
+FROM s3('https://s3.us-east-1.amazonaws.com/icedb-test-tangia-staging/chicago_taxis_1m_8k/_data/**/*.parquet')
+WHERE (trip_start_date >= '2021-01-01') AND (trip_start_date <= '2021-12-31')
+GROUP BY
+    `Payment Type`,
+    mnth
+ORDER BY count(*) DESC
+FORMAT `Null`
+
+Query id: a0034894-1fde-4927-a729-e00d7560812a
+
+Ok.
+
+0 rows in set. Elapsed: 0.764 sec. Processed 3.95 million rows, 66.79 MB (5.17 million rows/s., 87.40 MB/s.)
+Peak memory usage: 17.35 MiB.
+```
+
 ### Conclusion
+
+We can see for IceDB, querying the parquet files from S3 with ClickHouse using a VPC endpoint and node with 100gbit 
+nic, that S3 is the bottleneck. Not only did changing the file counts not help significantly (when it should), but 
+also I played with a 16vCPU node and got mostly identical results.
 
 Use custom minio clusters on local nvmes with 100gbit nics if you want IceDB + ClickHouse to beat out BigQuery, 
 especially if you use BigHouse (run clickhouse like bigquery)! With minio, you should expect to see multiple times 
 speed boosts on query performance, but it's a lot more to manage than S3 of course. As illustrated in 
 https://altinity.com/blog/clickhouse-object-storage-performance-minio-vs-aws-s3 we can see that querying with 16 
-cores to minio is faster than 64 to S3 💀.
+cores to minio is faster than 64 to S3 💀. This post also seems to confirm that past 16vCPU with S3 you don't see 
+much benefit, which is in line with my findings.
+
+I would expect a sufficient minio cluster to outperform S3 by 3-5x in terms of reducing query response times.
 
 **Ultimately comparing queries on S3 + ClickHouse using IceDB vs BigQuery, BigQuery loses in price/performance by a lot.**
 
