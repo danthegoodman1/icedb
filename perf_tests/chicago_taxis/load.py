@@ -78,6 +78,7 @@ with open('chicago_taxis.csv') as csvfile:
         # convert timestamp to unix seconds
         d = dict(zip(csv_headers, row))  # convert to a dict with the CSV headers as keys
         trip_start: str = d['Trip Start Timestamp']
+        print('trip start', trip_start)
         if trip_start[4] == '-':  # 2015-05-07 20:30:00 UTC
             dt = datetime.strptime(trip_start, '%Y-%m-%d %H:%M:%S %Z')
             d['Trip Start Timestamp'] = int(dt.timestamp() * 1000)
