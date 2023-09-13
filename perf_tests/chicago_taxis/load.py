@@ -31,11 +31,12 @@ csv_headers = [
 
 flush_limit = 1_000_000
 
+
 def part_func(row: dict) -> str:
     # Normally you should parse this with datetime package and
     # verify it, but we know the data is good, so we'll just short circuit it
     trip_start = row['Trip Start Timestamp']
-    if trip_start[4] == '-': # 2015-05-07 20:30:00 UTC
+    if trip_start[4] == '-':  # 2015-05-07 20:30:00 UTC
         return "d=" + '-'.join(trip_start.split('-')[:2])  # 2015-05-07
     else:
         dt = datetime.strptime(trip_start, '%m/%d/%Y %H:%M:%S %p')  # 05/09/2014 07:30:00 PM
@@ -64,7 +65,7 @@ row_buf = []
 def flush_row_buf():
     s = time()
     files = ice.insert(row_buf)
-    print(f"flushed {len(row_buf)} rows and {len(files)} files in {time()-s} seconds")
+    print(f"flushed {len(row_buf)} rows and {len(files)} files in {time() - s} seconds")
 
 
 start = time()
@@ -74,7 +75,15 @@ with open('chicago_taxis.csv') as csvfile:
     lr = csv.reader(csvfile, delimiter=',')
     next(lr, None)  # skip headers
     for row in lr:
+        # convert timestamp to unix seconds
         d = dict(zip(csv_headers, row))  # convert to a dict with the CSV headers as keys
+        trip_start = d['Trip Start Timestamp']
+        if trip_start[4] == '-':  # 2015-05-07 20:30:00 UTC
+            dt = datetime.strptime(trip_start, '%Y-%m-%d %H:%M:%S %Z')
+            d['Trip Start Timestamp'] = int(dt.timestamp() * 1000)
+        else:
+            dt = datetime.strptime(trip_start, '%m/%d/%Y %H:%M:%S %p')  # 05/09/2014 07:30:00 PM
+            d['Trip Start Timestamp'] = int(dt.timestamp() * 1000)
         row_buf.append(d)
         if len(row_buf) >= flush_limit:
             flush_row_buf()
@@ -85,4 +94,4 @@ with open('chicago_taxis.csv') as csvfile:
         flush_row_buf()
         row_buf = []
 
-print(f"done in {time()-start} seconds")
+print(f"done in {time() - start} seconds")

@@ -216,5 +216,4 @@ Sanity check count:
 Hmmmm... 5.38MB with ClickHouse vs. 75GB from BigQuery...
 
 ```
-
 ```

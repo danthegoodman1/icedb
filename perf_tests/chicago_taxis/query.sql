@@ -7,10 +7,16 @@ from s3('https://s3.us-east-1.amazonaws.com/icedb-test-tangia-staging/chicago_ta
 
 
 with toDate(extract(_path, 'd=(\w+)/')) AS trip_start_date
-SELECT count() as cnt, date_trunc('month', trip_start_date) as mnth
+SELECT count() as cnt, date_trunc('month', toDateTime(`Trip Start Timestamp`)) as mnth
 FROM s3('https://s3.us-east-1.amazonaws.com/icedb-test-tangia-staging/chicago_taxis_1m/_data/**/*.parquet', 'Parquet')
 group by mnth
 order by mnth desc
+
+SELECT count() as cnt, date_trunc('month', toDateTime(parseDateTime(`Trip Start Timestamp`, '%m/%d/%Y %h:%i:%S %p'))) as mnth
+FROM s3('https://s3.us-east-1.amazonaws.com/icedb-test-tangia-staging/chicago_taxis/_data/**/*.parquet', 'Parquet')
+group by mnth
+order by mnth desc
+Format Null
 
 
 with toDate(extract(_path, 'd=(\w+)/')) AS trip_start_date
