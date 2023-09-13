@@ -36,7 +36,7 @@ def part_func(row: dict) -> str:
     # Normally you should parse this with datetime package and
     # verify it, but we know the data is good, so we'll just short circuit it
     trip_start: int = row['Trip Start Timestamp']
-    dt = datetime.fromtimestamp(float(trip_start))
+    dt = datetime.fromtimestamp(float(trip_start/1000))
     return dt.strftime("d=%Y-%m")
 
 
