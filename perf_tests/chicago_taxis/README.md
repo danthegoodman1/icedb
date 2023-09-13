@@ -293,7 +293,7 @@ Peak memory usage: 1.21 GiB.
 ```
 
 BigQuery wins by a few GB here on data read, that's probably due to the massive row groups I used on upload (112k), 
-more granular row groups would perform a lot better, which we will observe when merged.
+more granular row groups would perform a lot better.
 
 ```
 SELECT
@@ -381,8 +381,140 @@ Merge performance seems to be entirely based on data size, as there is no differ
 and 3 larger files. The time was actually due to reading the massive log, as running an empty merge takes 16.21 
 seconds :P. This indicates to me that the time to actually process files for merging was far sub-second.
 
+Files were kept at a max size ~100MB.
+
 #### Queries (post merge and tombstone clean (2x), direct file access, m7a.32xlarge 128vCPU)
 
 Tombstone cleaning was run twice to make sure that all the old log files were cleaned up as well. This is fully 
 optimized, which is a more fair comparison to BigQuery as that dataset will have been fully merged and optimized as 
 well.
+
+```
+SELECT
+    count(),
+    uniq(_file)
+FROM s3('https://s3.us-east-1.amazonaws.com/icedb-test-tangia-staging/chicago_taxis_1m/_data/**/*.parquet')
+
+Query id: 975cbf0b-0140-42ba-b801-ff708ffd1593
+
+┌───count()─┬─uniq(_file)─┐
+│ 209512921 │         184 │
+└───────────┴─────────────┘
+```
+
+Much smaller file count, there are a few partitions with a handful of files, but many of them are only 1.
+
+```
+WITH parseDateTime(CAST(extract(_path, 'd=([^\\/]+)'), 'String'), '%Y-%m') AS mnth
+SELECT
+    count() AS cnt,
+    mnth
+FROM s3('https://s3.us-east-1.amazonaws.com/icedb-test-tangia-staging/chicago_taxis_1m/_data/**/*.parquet')
+GROUP BY mnth
+ORDER BY mnth DESC
+FORMAT `Null`
+
+Query id: c3656856-5e80-48e3-ba0d-5c116ea7f8b9
+
+Ok.
+
+0 rows in set. Elapsed: 0.807 sec. Processed 209.51 million rows, 0.00 B (259.71 million rows/s., 0.00 B/s.)
+Peak memory usage: 441.70 MiB.
+```
+
+```
+WITH parseDateTime(CAST(extract(_path, 'd=([^\\/]+)'), 'String'), '%Y-%m') AS trip_start_date
+SELECT *
+FROM
+(
+    SELECT
+        quantile(toInt64(Fare)) AS med_fare,
+        avg(toInt64(Fare)) AS avg_fare,
+        quantile(toInt64(Tips)) AS med_tips,
+        avg(toInt64(Tips)) AS avg_tips,
+        quantile(toInt64(`Trip Seconds`)) AS med_trip_seconds,
+        avg(toInt64(`Trip Seconds`)) AS avg_trip_seconds,
+        quantile(toInt64(`Trip Miles`)) AS med_trip_miles,
+        avg(toInt64(`Trip Miles`)) AS avg_trip_miles,
+        date_trunc('month', trip_start_date) AS mnth
+    FROM s3('https://s3.us-east-1.amazonaws.com/icedb-test-tangia-staging/chicago_taxis_1m/_data/**/*.parquet')
+    GROUP BY mnth
+)
+ORDER BY mnth DESC
+FORMAT `Null`
+
+Query id: 26a22369-8dea-4b49-92c8-b2b8dcbabbde
+
+Ok.
+
+0 rows in set. Elapsed: 5.778 sec. Processed 209.51 million rows, 11.36 GB (36.26 million rows/s., 1.97 GB/s.)
+Peak memory usage: 502.03 MiB.
+```
+
+This actually slowed down a bit, which again I believe is attributed to the relatively large row groups inside the 
+parquet files.
+
+```
+SELECT
+    count(),
+    `Payment Type`
+FROM s3('https://s3.us-east-1.amazonaws.com/icedb-test-tangia-staging/chicago_taxis_1m/_data/**/*.parquet')
+GROUP BY `Payment Type`
+ORDER BY count() DESC
+FORMAT `Null`
+
+Query id: 1659a3c1-429f-4aa5-a07e-055d402cc188
+
+Ok.
+
+0 rows in set. Elapsed: 3.054 sec. Processed 209.51 million rows, 3.54 GB (68.59 million rows/s., 1.16 GB/s.)
+Peak memory usage: 197.01 MiB.
+```
+
+```
+WITH parseDateTime(CAST(extract(_path, 'd=([^\\/]+)'), 'String'), '%Y-%m') AS trip_start_date
+SELECT
+    count(*),
+    `Payment Type`,
+    toMonth(trip_start_date) AS mnth
+FROM s3('https://s3.us-east-1.amazonaws.com/icedb-test-tangia-staging/chicago_taxis_1m/_data/**/*.parquet')
+WHERE mnth = 8
+GROUP BY
+    `Payment Type`,
+    mnth
+ORDER BY count(*) DESC
+FORMAT `Null`
+
+Query id: 75fae04e-1bd7-438c-b6c0-2864771e0529
+
+Ok.
+
+0 rows in set. Elapsed: 1.176 sec. Processed 17.91 million rows, 301.77 MB (15.23 million rows/s., 256.61 MB/s.)
+Peak memory usage: 20.56 MiB.
+```
+
+```
+WITH parseDateTime(CAST(extract(_path, 'd=([^\\/]+)'), 'String'), '%Y-%m') AS trip_start_date
+SELECT
+    count(),
+    `Payment Type`,
+    toMonth(trip_start_date) AS mnth
+FROM s3('https://s3.us-east-1.amazonaws.com/icedb-test-tangia-staging/chicago_taxis_1m/_data/**/*.parquet')
+WHERE (trip_start_date >= '2021-01-01') AND (trip_start_date <= '2021-12-31')
+GROUP BY
+    `Payment Type`,
+    mnth
+ORDER BY count(*) DESC
+FORMAT `Null`
+
+Query id: b00add9d-3d39-4f8d-9f42-635dfd836afb
+
+Ok.
+
+0 rows in set. Elapsed: 0.680 sec. Processed 3.95 million rows, 66.79 MB (5.81 million rows/s., 98.23 MB/s.)
+Peak memory usage: 17.35 MiB.
+```
+
+As we can see the queries that benefit from the partitioning have the largest speed difference. But otherwise 
+queries remain about the same performance due to a large row group size in the parquet files. In fact, due to this 
+large size more files is actually a bit faster to go through because there can be slightly more concurrency!

@@ -14,7 +14,7 @@ def part_func(row: dict) -> str:
         return dt.strftime("%Y-%m")
 
 
-s3c = S3Client(s3prefix="chicago_taxis_1m", s3bucket=os.getenv("AWS_S3_BUCKET"), s3region=os.getenv("AWS_S3_REGION"),
+s3c = S3Client(s3prefix="chicago_taxis_1m_8k", s3bucket=os.getenv("AWS_S3_BUCKET"), s3region=os.getenv("AWS_S3_REGION"),
                s3endpoint=os.getenv("AWS_S3_ENDPOINT"),
                s3accesskey=os.getenv("AWS_KEY_ID"), s3secretkey=os.getenv("AWS_KEY_SECRET"))
 
