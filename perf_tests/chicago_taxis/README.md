@@ -260,7 +260,8 @@ Ok.
 Peak memory usage: 701.83 MiB.
 ```
 
-0B vs 1.56GB on BigQuery...
+0B vs 1.56GB on BigQuery... We did do S3 listing calls and extracted the month from the partition so it wasn't 
+totally fair, but the cost was still orders of magnitude less than BigQuery.
 
 ```
 WITH parseDateTime(CAST(extract(_path, 'd=([^\\/]+)'), 'String'), '%Y-%m') AS trip_start_date
