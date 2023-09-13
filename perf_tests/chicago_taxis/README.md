@@ -672,8 +672,10 @@ I would expect a sufficient minio cluster to outperform S3 by 3-5x in terms of r
 **Ultimately comparing queries on S3 + ClickHouse using IceDB vs BigQuery, BigQuery loses in price/performance by a lot.**
 
 For example even just the same data set size, S3 doesn't charge egress in the same region, so a query that executes 
-in <5s on ClickHouse using a 128vCPU machine costs less than a cent, where a comparable BigQuery one might take one 
-second but read 77GB, costing ~$0.54. That's >54x more expensive to run a query on BigQuery.
+a bit slower on ClickHouse using a 128vCPU machine costs less than a cent, where a comparable BigQuery one might take 
+one 
+second but read 77GB, costing ~$0.54. That's >54x more expensive to run a query on BigQuery. But then again I bet 
+ClickHouse with 1/4 the resources queries 2x as fast as BigQuery with minio.
 
 ### Bonus: Testing the IceDB S3 Proxy
 
