@@ -35,12 +35,9 @@ flush_limit = 1_000_000
 def part_func(row: dict) -> str:
     # Normally you should parse this with datetime package and
     # verify it, but we know the data is good, so we'll just short circuit it
-    trip_start = row['Trip Start Timestamp']
-    if trip_start[4] == '-':  # 2015-05-07 20:30:00 UTC
-        return "d=" + '-'.join(trip_start.split('-')[:2])  # 2015-05-07
-    else:
-        dt = datetime.strptime(trip_start, '%m/%d/%Y %H:%M:%S %p')  # 05/09/2014 07:30:00 PM
-        return dt.strftime("d=%Y-%m")
+    trip_start: int = row['Trip Start Timestamp']
+    dt = datetime.fromtimestamp(float(trip_start))
+    return dt.strftime("d=%Y-%m")
 
 
 s3c = S3Client(s3prefix="chicago_taxis_1m", s3bucket=os.getenv("AWS_S3_BUCKET"), s3region=os.getenv("AWS_S3_REGION"),
@@ -78,16 +75,12 @@ with open('chicago_taxis.csv') as csvfile:
         # convert timestamp to unix seconds
         d = dict(zip(csv_headers, row))  # convert to a dict with the CSV headers as keys
         trip_start: str = d['Trip Start Timestamp']
-        try:
-            if trip_start[4] == '-':  # 2015-05-07 20:30:00 UTC
-                dt = datetime.strptime(trip_start, '%Y-%m-%d %H:%M:%S %Z')
-                d['Trip Start Timestamp'] = int(dt.timestamp() * 1000)
-            else:
-                dt = datetime.strptime(trip_start, '%m/%d/%Y %H:%M:%S %p')  # 05/09/2014 07:30:00 PM
-                d['Trip Start Timestamp'] = int(dt.timestamp() * 1000)
-        except Exception as e:
-            print('exception', e)
-            print(d)
+        if trip_start[4] == '-':  # 2015-05-07 20:30:00 UTC
+            dt = datetime.strptime(trip_start, '%Y-%m-%d %H:%M:%S %Z')
+            d['Trip Start Timestamp'] = int(dt.timestamp() * 1000)
+        else:
+            dt = datetime.strptime(trip_start, '%m/%d/%Y %H:%M:%S %p')  # 05/09/2014 07:30:00 PM
+            d['Trip Start Timestamp'] = int(dt.timestamp() * 1000)
         row_buf.append(d)
         if len(row_buf) >= flush_limit:
             flush_row_buf()
