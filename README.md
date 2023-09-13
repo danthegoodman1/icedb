@@ -38,7 +38,6 @@ It is also ideal for multi-tenant workloads where your end users want to directl
   * [Usage](#usage)
     * [Partition function (`part_func`)](#partition-function-partfunc)
     * [Sorting Order (`sort_order`)](#sorting-order-sortorder)
-    * [Row format function (`format_row`) (optional)](#row-format-function-formatrow-optional)
     * [`unique_row_key` (`_row_id`)](#uniquerowkey-rowid)
     * [Removing partitions (`remove_partitions`)](#removing-partitions-removepartitions)
     * [Rewriting partitions (`rewrite_partition`)](#rewriting-partitions-rewritepartition)
@@ -330,6 +329,10 @@ def part_func(row: dict) -> str:
 ice = IceDBv3(partition_strategy=part_strat, sort_order=['event', 'timestamp'])
 ```
 
+Additionally, a `_partition` property can be pre-defined on the row, which will avoid running the `part_func` and 
+use this instead (for example if you calculate this on ingest). This property will be dropped before copying the row 
+if `auto_copy` is enabled.
+
 ### Sorting Order (`sort_order`)
 
 Defines the order of top-level keys in the row dict that will be used for sorting inside the parquet file. This
@@ -344,52 +347,6 @@ Example sorting by event, then timestamp:
 
 This will allow us to efficiently query for events over time as we can pick a specific event, then filter the time
 range while reducing the amount of irrelevant rows read.
-
-### Row format function (`format_row`) (optional)
-
-The function that will determine how a row is finally formatted just before being inserted into parquet.
-For example, you might want to stringify some JSON. This is a convenience method that will apply some mutation to 
-every row inserted (or for `get_schema`) while handling copying as specified with the `autocopy` setting (default 
-`True`).
-
-**It's crucial that you flatten the row and do not have nested objects**
-
-Example handling JSON properties:
-
-```python
-import json
-
-
-def format_row(row: dict) -> dict:
-    row['properties'] = json.dumps(row['properties'])  # convert nested dict to json string
-    return row
-```
-
-You could also handle this with the [custom insert queries](#custom-insert-query-advanced-usage) like:
-```sql
-select *
-EXCLUDE properties -- remove the old properties
-, to_json(properties) as properties -- replace the properties with stringified JSON
-from _rows
-order by event, time
-```
-
-For something like a Materialized View that keeps a running count, we need to seed the row with an initial count, so
-we can sum that count in the custom merge query (and data queries) later.
-See [this example](examples/custom-merge-aggregation.py).
-
-```python
-import json
-
-
-def format_row(row: dict) -> dict:
-    row['properties'] = json.dumps(row['properties'])  # convert nested dict to json string
-    row['cnt'] = 1  # seed the count
-    return row
-```
-
-However, if you need users to define this row preparation, then best to use
-[custom insert queries](#custom-insert-query-advanced-usage)
 
 ### `unique_row_key` (`_row_id`)
 

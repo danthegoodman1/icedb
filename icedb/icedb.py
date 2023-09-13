@@ -1,13 +1,15 @@
+import os
 from typing import List, Callable, Dict
 import duckdb
 from uuid import uuid4
 from .log import (IceLogIO, Schema, LogMetadata, S3Client, FileMarker, LogTombstone, get_log_file_info,
                  LogMetadataFromJSON, LogTombstoneFromJSON, FileMarkerFromJSON)
-from time import time
+from time import time, sleep
 import json
 from enum import Enum
 import pyarrow as pa
 from copy import deepcopy
+import concurrent.futures
 
 
 class CompressionCodec(Enum):
@@ -18,14 +20,11 @@ class CompressionCodec(Enum):
 
 
 PartitionFunctionType = Callable[[dict], str]
-FormatRowType = Callable[[dict], dict]
 PartitionRemovalFunctionType = Callable[[list[str]], list[str]]
 
 class IceDBv3:
     partition_function: PartitionFunctionType
     sort_order: List[str]
-    format_row: FormatRowType | None
-    ddb: duckdb
     s3c: S3Client
     unique_row_key: str | None
     custom_merge_query: str | None
@@ -34,6 +33,8 @@ class IceDBv3:
     path_safe_hostname: str
     compression_codec: CompressionCodec
     auto_copy: bool
+    max_threads: int
+    duckdb_ext_dir: str
 
     def __init__(
             self,
@@ -45,7 +46,6 @@ class IceDBv3:
             s3_endpoint: str,
             s3_client: S3Client,
             path_safe_hostname: str,
-            format_row: FormatRowType = None,
             s3_use_path: bool = False,
             duckdb_ext_dir: str = None,
             custom_merge_query: str = None,
@@ -53,11 +53,11 @@ class IceDBv3:
             unique_row_key: str = None,
             row_group_size: int = 122_880,
             compression_codec: CompressionCodec = CompressionCodec.SNAPPY,
-            auto_copy: bool = True
+            auto_copy: bool = True,
+            max_threads: int = os.cpu_count()
     ):
         self.partition_function = partition_function
         self.sort_order = sort_order
-        self.format_row = format_row
         self.row_group_size = row_group_size
         self.path_safe_hostname = path_safe_hostname
         self.unique_row_key = unique_row_key
@@ -65,40 +65,37 @@ class IceDBv3:
         self.custom_merge_query = custom_merge_query
         self.custom_insert_query = custom_insert_query
         self.auto_copy = auto_copy
+        self.max_threads = max_threads
 
-        self.ddb = duckdb.connect(":memory:")
-        self.ddb.execute("install httpfs")
-        self.ddb.execute("load httpfs")
-        self.ddb.execute(f"SET s3_region='{s3_region}'")
-        self.ddb.execute(f"SET s3_access_key_id='{s3_access_key}'")
-        self.ddb.execute(f"SET s3_secret_access_key='{s3_secret_key}'")
-        self.ddb.execute(f"SET s3_endpoint='{s3_endpoint.split('://')[1]}'")
-        self.ddb.execute(f"SET s3_use_ssl={'false' if 'http://' in s3_endpoint else 'true'}")
+        self.duckdb_ext_dir = duckdb_ext_dir
+        self.s3_region = s3_region
+        self.s3_access_key = s3_access_key
+        self.s3_secret_key = s3_secret_key
+        self.s3_endpoint = s3_endpoint
+        self.s3_use_path = s3_use_path
+
         if not isinstance(compression_codec, CompressionCodec):
             raise AttributeError(f"invalid compression codec '{compression_codec}', must be one of type CompressionCodec")
 
         self.compression_codec = compression_codec
 
-        if s3_use_path:
-            self.ddb.execute("SET s3_url_style='path'")
-        if duckdb_ext_dir is not None:
-            self.ddb.execute(f"SET extension_directory='{duckdb_ext_dir}'")
-
-    def __format_lambda(self, row):
-        if self.format_row is not None:
-            row = self.format_row(row if self.auto_copy is False else deepcopy(row))
-        row['_row_id'] = str(uuid4()) if self.unique_row_key is None else row[self.unique_row_key]
-        return row
-
-    def __format_lambda_str(self, row):
+    def get_duckdb(self) -> duckdb:
         """
-        A version of format_lambda that just uses a string for
-        performance purposes when calculating schema
+        threadsafe creation of a duckdb session
         """
-        if self.format_row is not None:
-            row = self.format_row(row if self.auto_copy is False else deepcopy(row))
-        row['_row_id'] = "" if self.unique_row_key is None else row[self.unique_row_key]
-        return row
+        ddb = duckdb.connect(":memory:")
+        ddb.execute("install httpfs")
+        ddb.execute("load httpfs")
+        ddb.execute(f"SET s3_region='{self.s3_region}'")
+        ddb.execute(f"SET s3_access_key_id='{self.s3_access_key}'")
+        ddb.execute(f"SET s3_secret_access_key='{self.s3_secret_key}'")
+        ddb.execute(f"SET s3_endpoint='{self.s3_endpoint.split('://')[1]}'")
+        ddb.execute(f"SET s3_use_ssl={'false' if 'http://' in self.s3_endpoint else 'true'}")
+        if self.s3_use_path:
+            ddb.execute("SET s3_url_style='path'")
+        if self.duckdb_ext_dir is not None:
+            ddb.execute(f"SET extension_directory='{self.duckdb_ext_dir}'")
+        return ddb
 
     def __get_file_partition(self, full_path: str) -> str:
         base_path = full_path.split("_data/")[1]
@@ -114,15 +111,80 @@ class IceDBv3:
         """
         running_schema = Schema()
 
-        _rows = pa.Table.from_pylist(list(map(self.__format_lambda_str, rows)))
+        # seed _row_id if it doesn't exist
+        rows[0]['_row_id'] = "" if self.unique_row_key is None else rows[0][self.unique_row_key]
+        _rows = pa.Table.from_pylist(rows)
 
         # get schema
-        self.ddb.execute("describe {}".format("select * from _rows" if self.custom_insert_query is None
+        ddb = self.get_duckdb()
+        ddb.execute("describe {}".format("select * from _rows" if self.custom_insert_query is None
                                                          else self.custom_insert_query))
-        schema_arrow = self.ddb.arrow()
+        schema_arrow = ddb.arrow()
         running_schema.accumulate(list(map(lambda x: str(x), schema_arrow.column('column_name'))), list(map(lambda x:
          str(x), schema_arrow.column('column_type'))))
         return running_schema
+
+    def __insert_part(self, part: str, part_ref: list[dict]) -> tuple[FileMarker, Schema]:
+        running_schema = Schema()
+
+        # upload parquet file
+        filename = str(uuid4()) + '.parquet'
+        path_parts = ['_data', part, filename]
+        if self.s3c.s3prefix is not None:
+            path_parts = [self.s3c.s3prefix] + path_parts
+        fullpath = '/'.join(path_parts)
+
+        for row in part_ref:
+            row['_row_id'] = str(uuid4()) if self.unique_row_key is None else row[self.unique_row_key]
+
+        # py arrow table for inserting into duckdb
+        _rows = pa.Table.from_pylist(part_ref)
+
+        # get schema
+        ddb = self.get_duckdb()
+        ddb.execute("describe select * from _rows")
+        schema_arrow = ddb.arrow()
+        running_schema.accumulate(list(map(lambda x: str(x), schema_arrow.column('column_name'))),
+                                  list(map(lambda x: str(x), schema_arrow.column('column_type'))))
+
+        # copy to parquet file
+        s = time()
+        retries = 0
+        while retries < 3:
+            try:
+                # if retries > 0:
+                    # print(f"retrying duckdb s3 upload try {retries}")
+                ddb.execute("""
+                            copy ({}) to 's3://{}/{}' (format parquet, codec '{}', row_group_size {})
+                            """.format(
+                    'select * from _rows order by {}'.format(
+                        ','.join(self.sort_order)) if self.custom_insert_query is None else self.custom_insert_query,
+                    self.s3c.s3bucket,
+                    fullpath,
+                    self.compression_codec.value,
+                    self.row_group_size
+                ))
+                break
+            except duckdb.HTTPException as e:
+                if e.status_code < 500:
+                    raise e
+                if retries >= 3:
+                    raise e
+                retries += 1
+                print(f"HTTP exception (code {e.status_code}) uploading part on try {retries}, sleeping "
+                      f"{300*retries}ms before retrying")
+                sleep(0.3*retries)
+            except Exception as e:
+                raise e
+
+        insert_time = round(time() * 1000)
+
+        # get file metadata
+        obj = self.s3c.s3.head_object(
+            Bucket=self.s3c.s3bucket,
+            Key=fullpath
+        )
+        return FileMarker(fullpath, insert_time, obj['ContentLength']), running_schema
 
     def insert(self, rows: list[dict]) -> list[FileMarker]:
         """
@@ -130,9 +192,18 @@ class IceDBv3:
         data to be inserted. Must have the expected keys of the partitioning strategy and the sorting order
         """
         part_map: Dict[str, list[dict]] = {}
+        s = time()
         for row in rows:
-            # merge the rows into same parts
-            part = self.partition_function(row)
+            part: str
+            if "_partition" in row:
+                if self.auto_copy:
+                    # only copy if we need to delete it
+                    row = deepcopy(row)
+                part = row["_partition"]
+                del row["_partition"]
+            else:
+                part = self.partition_function(row)
+
             if part not in part_map:
                 part_map[part] = []
             part_map[part].append(row)
@@ -140,51 +211,21 @@ class IceDBv3:
         running_schema = Schema()
         file_markers: list[FileMarker] = []
 
-        for part in part_map:
-            # upload parquet file
-            filename = str(uuid4()) + '.parquet'
-            path_parts = ['_data', part, filename]
-            if self.s3c.s3prefix is not None:
-                path_parts = [self.s3c.s3prefix] + path_parts
-            fullpath = '/'.join(path_parts)
-            part_rows = list(map(self.__format_lambda, part_map[part]))
-            # for item in part_rows:
-            #     self.format_row(item)
-            #     item['_row_id'] = str(uuid4()) if self.unique_row_key is None else item[self.unique_row_key]
+        with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_threads) as executor:
+            futures = []
+            for part, part_ref in part_map.items():
+                futures.append(executor.submit(self.__insert_part, part, part_ref))
 
-            # py arrow table for inserting into duckdb
-            _rows = pa.Table.from_pylist(part_rows)
-
-            # get schema
-            self.ddb.execute("describe select * from _rows")
-            schema_arrow = self.ddb.arrow()
-            running_schema.accumulate(list(map(lambda x: str(x), schema_arrow.column('column_name'))),
-                                      list(map(lambda x: str(x), schema_arrow.column('column_type'))))
-
-            # copy to parquet file
-            self.ddb.execute("""
-            copy ({}) to 's3://{}/{}' (format parquet, codec '{}', row_group_size {})
-            """.format(
-                'select * from _rows order by {}'.format(
-                    ','.join(self.sort_order)) if self.custom_insert_query is None else self.custom_insert_query,
-                self.s3c.s3bucket,
-                fullpath,
-                self.compression_codec.value,
-                self.row_group_size
-            ))
-
-            insert_time = round(time() * 1000)
-
-            # get file metadata
-            obj = self.s3c.s3.head_object(
-                Bucket=self.s3c.s3bucket,
-                Key=fullpath
-            )
-            file_markers.append(FileMarker(fullpath, insert_time, obj['ContentLength']))
+            for futures in concurrent.futures.as_completed(futures):
+                result: tuple[FileMarker, Schema] = futures.result()
+                # append file marker
+                file_markers.append(result[0])
+                # accumulate schema
+                running_schema.accumulate(result[1].columns(), result[1].types())
 
         # Append to log
         logio = IceLogIO(self.path_safe_hostname)
-        log_path, log_meta = logio.append(self.s3c, 1, running_schema, file_markers)
+        logio.append(self.s3c, 1, running_schema, file_markers)
 
         return file_markers
 
@@ -240,7 +281,8 @@ class IceDBv3:
                     self.compression_codec.value, self.row_group_size
                 )
 
-                self.ddb.execute(q, [
+                ddb = self.get_duckdb()
+                ddb.execute(q, [
                     list(map(lambda x: f"s3://{self.s3c.s3bucket}/{x.path}", acc_file_markers))
                 ])
 
@@ -303,6 +345,11 @@ class IceDBv3:
         deleted_data_files: list[str] = []
         now = round(time() * 1000)
 
+        log_files_to_delete: dict[str, bool] = {}
+        data_files_to_delete: dict[str, bool] = {}
+        data_files_to_keep: dict[str, FileMarker] = {}
+        schema = Schema()
+
         current_log_files = logio.get_current_log_files(self.s3c)
         # We only need to get merge files
         merge_log_files = list(filter(lambda x: get_log_file_info(x['Key'])[1], current_log_files))
@@ -316,52 +363,66 @@ class IceDBv3:
             meta = LogMetadataFromJSON(meta_json)
 
             # Log tombstones
-            log_files_to_delete: list[str] = []
             if meta.tombstoneLineIndex is not None:
                 for i in range(meta.tombstoneLineIndex, meta.fileLineIndex):
                     tmb = LogTombstoneFromJSON(dict(json.loads(jsonl[i])))
                     if tmb.createdMS <= now - min_age_ms:
-                        log_files_to_delete.append(tmb.path)
+                        log_files_to_delete[tmb.path] = True
 
             # File markers
-            file_markers: list[FileMarker] = []
             for i in range(meta.fileLineIndex, len(jsonl)):
                 fm_json = dict(json.loads(jsonl[i]))
                 fm = FileMarkerFromJSON(fm_json)
-                file_markers.append(fm)
+                if fm.createdMS <= now - min_age_ms and fm.tombstone is not None:
+                    data_files_to_delete[fm.path] = True
+                    if fm.path in data_files_to_keep:
+                        del data_files_to_keep[fm.path]
+                else:
+                    data_files_to_keep[fm.path] = fm
 
-            # Delete log tombstones
-            for log_path in log_files_to_delete:
-                self.s3c.s3.delete_object(
-                    Bucket=self.s3c.s3bucket,
-                    Key=log_path
-                )
-
-            # Delete data tombstones
-            file_markers_to_delete: list[FileMarker] = list(filter(lambda x: x.createdMS <= now - min_age_ms and
-                                                                             x.tombstone is not None, file_markers))
-            for data_path in file_markers_to_delete:
-                self.s3c.s3.delete_object(
-                    Bucket=self.s3c.s3bucket,
-                    Key=data_path.path
-                )
-
-            # Upsert log file
-            schema = Schema()
+            # Accumulate schema
             schema_json = dict(json.loads(jsonl[meta.schemaLineIndex]))
             schema.accumulate(list(schema_json.keys()), list(schema_json.values()))
-            new_log, _ = logio.append(
-                self.s3c,
-                1,
-                schema,
-                list(filter(lambda x: x.tombstone is None or x.createdMS > now - min_age_ms, file_markers)),
-                None,
-                merged=True,
-                timestamp=meta.timestamp
-            )
+
             cleaned_log_files.append(file['Key'])
-            deleted_log_files += log_files_to_delete
-            deleted_data_files += list(map(lambda x: x.path, file_markers_to_delete))
+
+        # Delete log tombstones
+        for log_path in log_files_to_delete.keys():
+            self.s3c.s3.delete_object(
+                Bucket=self.s3c.s3bucket,
+                Key=log_path
+            )
+            deleted_log_files.append(log_path)
+
+        # Delete data files
+        for data_path in data_files_to_delete.keys():
+            self.s3c.s3.delete_object(
+                Bucket=self.s3c.s3bucket,
+                Key=data_path
+            )
+            deleted_log_files.append(data_path)
+
+
+
+        # New log file
+        new_log, _ = logio.append(
+            self.s3c,
+            1,
+            schema,
+            list(data_files_to_keep.values()),
+            None,
+            merged=True,
+            timestamp=round(time()*1000)
+        )
+        deleted_log_files += log_files_to_delete.keys()
+        deleted_data_files += data_files_to_delete
+        # Delete the cleaned log files
+        for path in cleaned_log_files:
+            self.s3c.s3.delete_object(
+                Bucket=self.s3c.s3bucket,
+                Key=path
+            )
+        print(f"Keeping {len(data_files_to_keep)} files")
 
         return cleaned_log_files, deleted_log_files, deleted_data_files
 
@@ -480,7 +541,8 @@ class IceDBv3:
             fullpath = '/'.join(path_parts)
 
             # Copy the files through the query
-            self.ddb.execute("""
+            ddb = self.get_duckdb()
+            ddb.execute("""
                         copy ({}) to 's3://{}/{}' (format parquet, codec '{}', row_group_size {})
                         """.format(
                 filter_query.replace("_rows", "read_parquet(?)"),

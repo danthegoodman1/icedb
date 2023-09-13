@@ -16,11 +16,6 @@ def part_func(row: dict) -> str:
     return part
 
 
-def format_row(row: dict) -> dict:
-    row['properties'] = json.dumps(row['properties'])  # convert nested dict to json string
-    return row
-
-
 ice = IceDBv3(
     part_func,
     ['event', 'ts'],
@@ -31,8 +26,7 @@ ice = IceDBv3(
     s3c,
     "dan-mbp",
     s3_use_path=True,
-    compression_codec=CompressionCodec.ZSTD,
-    format_row=format_row
+    compression_codec=CompressionCodec.ZSTD
 )
 
 example_events = [
@@ -40,35 +34,35 @@ example_events = [
         "ts": 1686176939445,
         "event": "page_load",
         "user_id": "a",
-        "properties": {
+        "properties": json.dumps({
             "hey": "ho",
             "numtime": 1,
             "nested_dict": {
                 "ee": "fff"
             }
-        }
+        })
     }, {
         "ts": 1676126229999,
         "event": "page_load",
         "user_id": "b",
-        "properties": {
+        "properties": json.dumps({
             "hey": "hoergergergrergereg",
             "numtime": 1,
             "nested_dict": {
                 "ee": "fff"
             }
-        }
+        })
     }, {
         "ts": 1686176939666,
         "event": "something_else",
         "user_id": "a",
-        "properties": {
+        "properties": json.dumps({
             "hey": "ho",
             "numtime": 1,
             "nested_dict": {
                 "ee": "fff"
             }
-        }
+        })
     }
 ]
 more_example_events = [
@@ -76,35 +70,35 @@ more_example_events = [
         "ts": 1686176939445,
         "event": "page_load",
         "user_id": "a",
-        "properties": {
+        "properties": json.dumps({
             "hey": "hoeeeeeee",
             "numtime": 1,
             "nested_dict": {
                 "ee": "fff"
             }
-        }
+        })
     }, {
         "ts": 1676126229999,
         "event": "page_load",
         "user_id": "b",
-        "properties": {
+        "properties": json.dumps({
             "hey": "hoergeeeeeeeeeeeeeeergergrergereg",
             "numtime": 1,
             "nested_dict": {
                 "ee": "fff"
             }
-        }
+        })
     }, {
         "ts": 1686176939666,
         "event": "something_else",
         "user_id": "a",
-        "properties": {
+        "properties": json.dumps({
             "hey": "hoeeeeeeeeeeeeeeeee",
             "numtime": 1,
             "nested_dict": {
                 "ee": "fff"
             }
-        }
+        })
     }
 ]
 
@@ -134,9 +128,9 @@ try:
         ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", f1)))
     )
     print('executing query:', query)
-    # THIS IS A BAD IDEA NEVER DO THIS IN PRODUCTION
-    ice.ddb.execute(query)
-    res = ice.ddb.fetchall()
+    ddb = ice.get_duckdb()
+    ddb.execute(query)
+    res = ddb.fetchall()
     print(res)
 
     assert res[0][0] == 2
@@ -164,9 +158,8 @@ try:
         ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", f1)))
     )
     print('executing query:', query)
-    # THIS IS A BAD IDEA NEVER DO THIS IN PRODUCTION
-    ice.ddb.execute(query)
-    res = ice.ddb.fetchall()
+    ddb.execute(query)
+    res = ddb.fetchall()
     print(res)
 
     assert res[0][0] == 4
@@ -192,9 +185,8 @@ try:
         ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", f1)))
     )
     print('executing query:', query)
-    # THIS IS A BAD IDEA NEVER DO THIS IN PRODUCTION
-    ice.ddb.execute(query)
-    res = ice.ddb.fetchall()
+    ddb.execute(query)
+    res = ddb.fetchall()
     print(res)
 
     assert res[0][0] == 6
@@ -221,7 +213,8 @@ try:
     print("log files:", l1)
 
     # verify log tombstones and file marker tombstones
-    possible_file_tmb = list(filter(lambda x: 'd=2023-06-07' in x, firstInserted + secondInserted + third_inserted))
+    possible_file_tmb = firstInserted + secondInserted + third_inserted # because of concurrency, either could be
+    # inserted first
     print("possible file tombstones:", possible_file_tmb)
     actual_tomb = list(map(lambda x: x.path, filter(lambda x: x.tombstone is not None, f1)))
     print("got actual tombstones:", actual_tomb)
@@ -247,9 +240,8 @@ try:
         ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
     )
     print('executing query:', query)
-    # THIS IS A BAD IDEA NEVER DO THIS IN PRODUCTION
-    ice.ddb.execute(query)
-    res = ice.ddb.fetchall()
+    ddb.execute(query)
+    res = ddb.fetchall()
     print(res)
 
     assert res[0][0] == 6
@@ -300,9 +292,8 @@ try:
         ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
     )
     print('executing query:', query)
-    # THIS IS A BAD IDEA NEVER DO THIS IN PRODUCTION
-    ice.ddb.execute(query)
-    res = ice.ddb.fetchall()
+    ddb.execute(query)
+    res = ddb.fetchall()
     print(res)
 
     assert res[0][0] == 6
@@ -310,11 +301,11 @@ try:
 
     print('results validated')
 
-    print("============== insert hundreds ==============")
+    print("============== insert 100 more ==============")
     print("this will take a while...")
 
     s = time()
-    for i in range(200):
+    for i in range(100):
         ice.insert(deepcopy(example_events))
         sys.stdout.write(f"\rinserted {i+1}")
         sys.stdout.flush()
@@ -327,8 +318,8 @@ try:
     print("read hundreds in", time()-s)
 
     print("files", len(f1), "logs", len(l1))
-    assert len(l1) == 202
-    assert len(f1) == 405
+    assert len(l1) == 102
+    assert len(f1) == 205
 
     print("verify expected results")
     s = time()
@@ -337,13 +328,12 @@ try:
     query = "select count(user_id), user_id from read_parquet([{}]) group by user_id order by count(user_id) desc".format(
         ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
     )
-    # THIS IS A BAD IDEA NEVER DO THIS IN PRODUCTION
-    ice.ddb.execute(query)
-    res = ice.ddb.fetchall()
+    ddb.execute(query)
+    res = ddb.fetchall()
     print(res, "in", time()-s)
 
-    assert res[0][0] == 406
-    assert res[1][0] == 203
+    assert res[0][0] == 206
+    assert res[1][0] == 103
 
     print("merging it")
     s = time()
@@ -355,8 +345,8 @@ try:
     print("read post merge state in", time() - s)
 
     print("files", len(f1), "logs", len(l1))
-    assert len(l1) == 203
-    assert len(f1) == 406
+    assert len(l1) == 103
+    assert len(f1) == 206
 
     print("verify expected results")
     s = time()
@@ -365,13 +355,12 @@ try:
     query = "select count(user_id), user_id from read_parquet([{}]) group by user_id order by count(user_id) desc".format(
         ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
     )
-    # THIS IS A BAD IDEA NEVER DO THIS IN PRODUCTION
-    ice.ddb.execute(query)
-    res = ice.ddb.fetchall()
+    ddb.execute(query)
+    res = ddb.fetchall()
     print(res, "in", time() - s)
 
-    assert res[0][0] == 406
-    assert res[1][0] == 203
+    assert res[0][0] == 206
+    assert res[1][0] == 103
 
     print("merging many more times to verify")
     for i in range(4):
@@ -385,8 +374,8 @@ try:
     print("read post merge state in", time() - s)
 
     print("files", len(f1), "logs", len(l1))
-    assert len(l1) == 205
-    assert len(f1) == 408
+    assert len(l1) == 104
+    assert len(f1) == 207
 
     print("verify expected results")
     s = time()
@@ -395,13 +384,12 @@ try:
     query = "select count(user_id), user_id from read_parquet([{}]) group by user_id order by count(user_id) desc".format(
         ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
     )
-    # THIS IS A BAD IDEA NEVER DO THIS IN PRODUCTION
-    ice.ddb.execute(query)
-    res = ice.ddb.fetchall()
+    ddb.execute(query)
+    res = ddb.fetchall()
     print(res, "in", time() - s)
 
-    assert res[0][0] == 406
-    assert res[1][0] == 203
+    assert res[0][0] == 206
+    assert res[1][0] == 103
 
     print("tombstone clean it")
     s = time()
@@ -423,13 +411,12 @@ try:
     query = "select count(user_id), user_id from read_parquet([{}]) group by user_id order by count(user_id) desc".format(
         ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
     )
-    # THIS IS A BAD IDEA NEVER DO THIS IN PRODUCTION
-    ice.ddb.execute(query)
-    res = ice.ddb.fetchall()
+    ddb.execute(query)
+    res = ddb.fetchall()
     print(res, "in", time() - s)
 
-    assert res[0][0] == 406
-    assert res[1][0] == 203
+    assert res[0][0] == 206
+    assert res[1][0] == 103
 
     testS3Proxy = False
     if testS3Proxy:
@@ -442,7 +429,6 @@ try:
         iceproxy = IceDBv3(
             part_func,
             ['event', 'ts'],
-            format_row,
             "us-east-1",
             "user",
             "password",
@@ -460,8 +446,8 @@ try:
         res = iceproxy.ddb.fetchall()
         print(res, "in", time() - s)
 
-        assert res[0][0] == 406
-        assert res[1][0] == 203
+        assert res[0][0] == 206
+        assert res[1][0] == 103
 
     print("============= partition removal ==================")
     # existing partitions:
@@ -488,13 +474,12 @@ try:
     query = "select count(user_id), user_id from read_parquet([{}]) group by user_id order by count(user_id) desc".format(
         ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
     )
-    # THIS IS A BAD IDEA NEVER DO THIS IN PRODUCTION
-    ice.ddb.execute(query)
-    res = ice.ddb.fetchall()
+    ddb.execute(query)
+    res = ddb.fetchall()
     print(res, "in", time() - s)
 
     assert(len(res) == 1)
-    assert res[0][0] == 406
+    assert res[0][0] == 206
 
     print("============= partition rewrite ==================")
     new_log, meta, rewritten = ice.rewrite_partition("cust=test/d=2023-06-07", """
@@ -521,13 +506,12 @@ try:
     query = "select count(user_id), user_id from read_parquet([{}]) group by user_id order by count(user_id) desc".format(
         ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
     )
-    # THIS IS A BAD IDEA NEVER DO THIS IN PRODUCTION
-    ice.ddb.execute(query)
-    res = ice.ddb.fetchall()
+    ddb.execute(query)
+    res = ddb.fetchall()
     print(res, "in", time() - s)
 
     assert(len(res) == 1)
-    assert res[0][0] == 203
+    assert res[0][0] == 103
 
     print("test successful!")
 except Exception as e:
