@@ -363,4 +363,20 @@ Overall it's amazing that this performance is had a over 4k data files! Now let'
 
 #### Merge performance
 
+```
+Merged partition d=2018-05 with 32 files in 14.967223167419434 seconds
+Merged partition d=2018-05 with 3 files in 15.671793460845947 seconds
+Merged partition d=2017-10 with 32 files in 15.577917337417603 seconds
+Merged partition d=2017-10 with 2 files in 14.891311407089233 seconds
+Merged partition d=2018-03 with 32 files in 16.53251338005066 seconds
+Merged partition d=2018-03 with 2 files in 14.830085754394531 seconds
+Merged partition d=2017-12 with 31 files in 16.494601249694824 seconds
+Merged partition d=2017-12 with 2 files in 14.961239576339722 seconds
+Merged partition d=2017-02 with 30 files in 15.911055326461792 seconds
+Merged partition d=2017-02 with 3 files in 15.94778323173523 seconds
+```
+
+Merge performance seems to be entirely based on data size, as there is no difference between merging 30 small files 
+and 3 larger files. I suspect there are optimizations for merge performance as this is unexpectedly poor.
+
 #### Queries (post merge, direct file access, m7a.32xlarge 128vCPU) 
