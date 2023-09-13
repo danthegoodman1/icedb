@@ -171,13 +171,15 @@ done in 6661.757550239563 seconds
 
 Bumped to batches of 1M, we can see a significant performance increase:
 ```
-flushed 1000000 rows and 21 files in 17.91532826423645 seconds
-flushed 1000000 rows and 12 files in 17.58492422103882 seconds
-flushed 1000000 rows and 12 files in 17.568284511566162 seconds
-flushed 1000000 rows and 12 files in 18.191020488739014 seconds
-flushed 1000000 rows and 13 files in 17.931345462799072 seconds
-flushed 1000000 rows and 14 files in 18.225353002548218 seconds
-flushed 1000000 rows and 14 files in 18.443052530288696 seconds
+flushed 1000000 rows and 38 files in 11.008766889572144 seconds
+flushed 1000000 rows and 12 files in 12.015792608261108 seconds
+flushed 1000000 rows and 9 files in 13.039586782455444 seconds
+flushed 1000000 rows and 19 files in 16.860508918762207 seconds
+flushed 1000000 rows and 20 files in 12.093096017837524 seconds
+flushed 1000000 rows and 26 files in 12.574611902236938 seconds
+performing a final flush of 512921 rows
+flushed 512921 rows and 24 files in 6.469081163406372 seconds
+done in 5156.894633293152 seconds
 ```
 
 The larger the batches, the more efficient uploads are as compression becomes more effective. The bottlenecks at the 
@@ -200,20 +202,165 @@ this, and am already planning lots of optimizations!
 
 For queries, we'll use the 1M batches
 
-#### Queries (pre merge, direct file access, m7a.8xlarge 32vCPU 128GB ram)
+#### Queries (pre merge, direct file access, m7a.32xlarge 128vCPU)
 
 Sanity check count:
 
 ```
+SELECT
+    count(),
+    uniq(_file)
+FROM s3('https://s3.us-east-1.amazonaws.com/icedb-test-tangia-staging/chicago_taxis_1m/_data/**/*.parquet')
 
+Query id: 29e26b39-ac69-4ca6-a147-47ea6afb32fa
+
+┌───count()─┬─uniq(_file)─┐
+│ 209512921 │        4650 │
+└───────────┴─────────────┘
+
+1 row in set. Elapsed: 2.699 sec. Processed 209.51 million rows, 0.00 B (77.62 million rows/s., 0.00 B/s.)
+Peak memory usage: 936.95 MiB.
 ```
 
+A little more data than BigQuery (BQ updates every month IIRC), and 4.6k data files... that's a lot, merging should 
+have a substantial benefit!
 
+
+```
+SELECT *
+FROM s3('https://s3.us-east-1.amazonaws.com/icedb-test-tangia-staging/chicago_taxis_1m/_data/**/*.parquet')
+LIMIT 1000
+FORMAT `Null`
+
+Query id: 303402db-19a7-4fc1-929d-411ed5054ae6
+
+Ok.
+
+0 rows in set. Elapsed: 0.371 sec. Processed 1.20 thousand rows, 633.06 KB (3.23 thousand rows/s., 1.71 MB/s.)
+Peak memory usage: 9.87 MiB.
+```
+
+Hmmmm... 633.06KB with ClickHouse vs. 75GB from BigQuery...
+
+```
+WITH parseDateTime(CAST(extract(_path, 'd=([^\\/]+)'), 'String'), '%Y-%m') AS mnth
+SELECT
+    count() AS cnt,
+    mnth
+FROM s3('https://s3.us-east-1.amazonaws.com/icedb-test-tangia-staging/chicago_taxis_1m/_data/**/*.parquet', 'Parquet')
+GROUP BY mnth
+ORDER BY mnth DESC
+FORMAT `Null`
+
+Query id: 3bbc603e-e9aa-485e-9d76-80a822d15506
+
+Ok.
+
+0 rows in set. Elapsed: 1.718 sec. Processed 209.51 million rows, 0.00 B (121.97 million rows/s., 0.00 B/s.)
+Peak memory usage: 701.83 MiB.
+```
+
+0B vs 1.56GB on BigQuery...
+
+```
+WITH parseDateTime(CAST(extract(_path, 'd=([^\\/]+)'), 'String'), '%Y-%m') AS trip_start_date
+SELECT *
+FROM
+(
+    SELECT
+        quantile(toInt64(Fare)) AS med_fare,
+        avg(toInt64(Fare)) AS avg_fare,
+        quantile(toInt64(Tips)) AS med_tips,
+        avg(toInt64(Tips)) AS avg_tips,
+        quantile(toInt64(`Trip Seconds`)) AS med_trip_seconds,
+        avg(toInt64(`Trip Seconds`)) AS avg_trip_seconds,
+        quantile(toInt64(`Trip Miles`)) AS med_trip_miles,
+        avg(toInt64(`Trip Miles`)) AS avg_trip_miles,
+        date_trunc('month', trip_start_date) AS mnth
+    FROM s3('https://s3.us-east-1.amazonaws.com/icedb-test-tangia-staging/chicago_taxis_1m/_data/**/*.parquet', 'Parquet')
+    GROUP BY mnth
+)
+ORDER BY mnth DESC
+FORMAT `Null`
+
+Query id: e409b8a0-f022-4c17-b7c8-58c5308b6455
+
+Ok.
+
+0 rows in set. Elapsed: 4.564 sec. Processed 209.51 million rows, 11.36 GB (45.91 million rows/s., 2.49 GB/s.)
+Peak memory usage: 1.21 GiB.
+```
+
+BigQuery wins by a few GB here on data read, that's probably due to the massive row groups I used on upload (112k), 
+more granular row groups would perform a lot better, which we will observe when merged.
+
+```
+SELECT
+    count(),
+    `Payment Type`
+FROM s3('https://s3.us-east-1.amazonaws.com/icedb-test-tangia-staging/chicago_taxis_1m/_data/**/*.parquet')
+GROUP BY `Payment Type`
+ORDER BY count() DESC
+FORMAT `Null`
+
+Query id: 68879e6b-33ad-4a86-92db-429ba1d99866
+
+Ok.
+
+0 rows in set. Elapsed: 2.704 sec. Processed 209.51 million rows, 3.54 GB (77.47 million rows/s., 1.31 GB/s.)
+Peak memory usage: 1.38 GiB.
 ```
 
 ```
+WITH parseDateTime(CAST(extract(_path, 'd=([^\\/]+)'), 'String'), '%Y-%m') AS trip_start_date
+SELECT
+    count(*),
+    `Payment Type`,
+    toMonth(trip_start_date) AS mnth
+FROM s3('https://s3.us-east-1.amazonaws.com/icedb-test-tangia-staging/chicago_taxis_1m/_data/**/*.parquet')
+WHERE mnth = 8
+GROUP BY
+    `Payment Type`,
+    mnth
+ORDER BY count(*) DESC
+FORMAT `Null`
 
-Hmmmm... 5.38MB with ClickHouse vs. 75GB from BigQuery...
+Query id: 8cafbd90-bf38-4dc5-83fd-041eaadab565
+
+Ok.
+
+0 rows in set. Elapsed: 1.127 sec. Processed 17.91 million rows, 301.77 MB (15.90 million rows/s., 267.85 MB/s.)
+Peak memory usage: 285.48 MiB.
+```
+
+301MB vs 3.3GB from BQ
 
 ```
+WITH parseDateTime(CAST(extract(_path, 'd=([^\\/]+)'), 'String'), '%Y-%m') AS trip_start_date
+SELECT
+    count(),
+    `Payment Type`,
+    toMonth(trip_start_date) AS mnth
+FROM s3('https://s3.us-east-1.amazonaws.com/icedb-test-tangia-staging/chicago_taxis_1m/_data/**/*.parquet')
+WHERE (trip_start_date >= '2021-01-01') AND (trip_start_date <= '2021-12-31')
+GROUP BY
+    `Payment Type`,
+    mnth
+ORDER BY count(*) DESC
+FORMAT `Null`
+
+Query id: 397d2026-3175-4a95-bc3d-f9ff78bb802e
+
+Ok.
+
+0 rows in set. Elapsed: 1.001 sec. Processed 3.95 million rows, 66.79 MB (3.94 million rows/s., 66.72 MB/s.)
+Peak memory usage: 96.76 MiB.
 ```
+
+About the same data is BigQuery
+
+Overall it's amazing that this performance is had a over 4k data files! Now let's merge them all up and rerun queries :)
+
+#### Merge performance
+
+#### Queries (post merge, direct file access, m7a.32xlarge 128vCPU) 
