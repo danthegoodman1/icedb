@@ -78,13 +78,16 @@ with open('chicago_taxis.csv') as csvfile:
         # convert timestamp to unix seconds
         d = dict(zip(csv_headers, row))  # convert to a dict with the CSV headers as keys
         trip_start: str = d['Trip Start Timestamp']
-        print('trip start', d['Trip Start Timestamp'])
-        if trip_start[4] == '-':  # 2015-05-07 20:30:00 UTC
-            dt = datetime.strptime(trip_start, '%Y-%m-%d %H:%M:%S %Z')
-            d['Trip Start Timestamp'] = int(dt.timestamp() * 1000)
-        else:
-            dt = datetime.strptime(trip_start, '%m/%d/%Y %H:%M:%S %p')  # 05/09/2014 07:30:00 PM
-            d['Trip Start Timestamp'] = int(dt.timestamp() * 1000)
+        try:
+            if trip_start[4] == '-':  # 2015-05-07 20:30:00 UTC
+                dt = datetime.strptime(trip_start, '%Y-%m-%d %H:%M:%S %Z')
+                d['Trip Start Timestamp'] = int(dt.timestamp() * 1000)
+            else:
+                dt = datetime.strptime(trip_start, '%m/%d/%Y %H:%M:%S %p')  # 05/09/2014 07:30:00 PM
+                d['Trip Start Timestamp'] = int(dt.timestamp() * 1000)
+        except Exception as e:
+            print('exception', e)
+            print(d)
         row_buf.append(d)
         if len(row_buf) >= flush_limit:
             flush_row_buf()
