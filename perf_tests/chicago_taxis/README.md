@@ -673,4 +673,19 @@ I would expect a sufficient minio cluster to outperform S3 by 3-5x in terms of r
 
 For example even just the same data set size, S3 doesn't charge egress in the same region, so a query that executes 
 in <5s on ClickHouse using a 128vCPU machine costs less than a cent, where a comparable BigQuery one might take one 
-second but read 77GB, costing ~$0.54. That's >54x more expensive to run a query on BigQuery. 
+second but read 77GB, costing ~$0.54. That's >54x more expensive to run a query on BigQuery.
+
+### Bonus: Testing the IceDB S3 Proxy
+
+I didn't use the proxy in this test because in all testing, I found the S3 proxy to perform as well as S3 directly:
+
+```
+root@ip-10-0-166-178:~# curl http://localhost:8080/icedb-test-tangia-staging/wav2lip_gan.pth --output out
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+100  415M    0  415M    0     0  95.2M      0 --:--:--  0:00:04 --:--:-- 95.3M
+root@ip-10-0-166-178:~# curl https://s3.us-east-1.amazonaws.com/icedb-test-tangia-staging/namespace/user_abc/wav2lip_gan.pth --output out
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+100  415M  100  415M    0     0  94.5M      0  0:00:04  0:00:04 --:--:-- 94.5M
+```
