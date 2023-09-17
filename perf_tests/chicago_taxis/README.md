@@ -654,20 +654,148 @@ Ok.
 Peak memory usage: 17.35 MiB.
 ```
 
+##### Bonus m7a.8xlarge
+
+```
+SELECT
+    count(),
+    `Payment Type`
+FROM s3('https://s3.us-east-1.amazonaws.com/icedb-test-tangia-staging/chicago_taxis_1m/_data/**/*.parquet')
+GROUP BY `Payment Type`
+ORDER BY count() DESC
+FORMAT `Null`
+
+Query id: 6988363a-98b5-4b1a-8941-e03f19c07fa3
+
+Ok.
+
+0 rows in set. Elapsed: 2.364 sec. Processed 209.51 million rows, 3.54 GB (88.63 million rows/s., 1.50 GB/s.)
+Peak memory usage: 316.68 MiB.
+```
+
+
+But if I do it with 128 threads I get
+
+```
+SELECT
+    count(),
+    `Payment Type`
+FROM s3('https://s3.us-east-1.amazonaws.com/icedb-test-tangia-staging/chicago_taxis_1m/_data/**/*.parquet')
+GROUP BY `Payment Type`
+ORDER BY count() DESC
+FORMAT `Null`
+SETTINGS max_threads = 128
+
+Query id: 9508f8dc-fedc-4638-9e39-d169bc046b74
+
+Ok.
+
+0 rows in set. Elapsed: 1.197 sec. Processed 209.51 million rows, 3.54 GB (175.05 million rows/s., 2.96 GB/s.)
+Peak memory usage: 199.05 MiB.
+```
+
+
+Which are all hot runs. Cold run was a LOT slower
+
+```
+SELECT
+    count(),
+    `Payment Type`
+FROM s3('https://s3.us-east-1.amazonaws.com/icedb-test-tangia-staging/chicago_taxis_1m/_data/**/*.parquet')
+GROUP BY `Payment Type`
+ORDER BY count() DESC
+FORMAT `Null`
+
+Query id: 1cd0bc1b-b94c-42c8-b0f9-1affc133d2a6
+
+Ok.
+
+0 rows in set. Elapsed: 8.600 sec. Processed 209.51 million rows, 3.54 GB (24.36 million rows/s., 411.96 MB/s.)
+Peak memory usage: 321.15 MiB.
+```
+
+##### Bonus, r6in.32xlarge
+
+Cold run of r6in.32xlarge
+```
+SELECT
+    count(),
+    `Payment Type`
+FROM s3('https://s3.us-east-1.amazonaws.com/icedb-test-tangia-staging/chicago_taxis_1m/_data/**/*.parquet')
+GROUP BY `Payment Type`
+ORDER BY count() DESC
+FORMAT `Null`
+
+Query id: 9b7c1985-232e-4e9e-a13a-58ca95796e34
+
+Ok.
+
+0 rows in set. Elapsed: 4.126 sec. Processed 209.51 million rows, 3.54 GB (50.78 million rows/s., 858.80 MB/s.)
+Peak memory usage: 453.93 MiB.
+```
+
+
+Hot run:
+```
+SELECT
+    count(),
+    `Payment Type`
+FROM s3('https://s3.us-east-1.amazonaws.com/icedb-test-tangia-staging/chicago_taxis_1m/_data/**/*.parquet')
+GROUP BY `Payment Type`
+ORDER BY count() DESC
+FORMAT `Null`
+SETTINGS max_threads = 128
+
+Query id: 241ba99a-97ca-4ca9-8c68-8fd5b1dd28ed
+
+Ok.
+
+0 rows in set. Elapsed: 1.121 sec. Processed 209.51 million rows, 3.54 GB (186.89 million rows/s., 3.16 GB/s.)
+Peak memory usage: 196.08 MiB.
+```
+
+Hot with more threads:
+
+```
+SELECT
+    count(),
+    `Payment Type`
+FROM s3('https://s3.us-east-1.amazonaws.com/icedb-test-tangia-staging/chicago_taxis_1m/_data/**/*.parquet')
+GROUP BY `Payment Type`
+ORDER BY count() DESC
+FORMAT `Null`
+SETTINGS max_threads = 300
+
+Query id: 3899b91b-fc87-4007-9248-2a783a8d0a95
+
+Ok.
+
+0 rows in set. Elapsed: 1.261 sec. Processed 209.51 million rows, 3.54 GB (166.20 million rows/s., 2.81 GB/s.)
+Peak memory usage: 203.01 MiB.
+```
+
+As we can see, once we start matching the threads to the number of files (186) we aren't getting much more benefit 
+from relatively small single files (~60-200MB). However, even hot queries could range by upwards of 3x the above 
+performance due to what must be random high latency file downloads. 
+
 ### Conclusion
 
 We can see for IceDB, querying the parquet files from S3 with ClickHouse using a VPC endpoint and node with 100gbit 
 nic, that S3 is the bottleneck. Not only did changing the file counts not help significantly (when it should), but 
-also I played with a 16vCPU node and got mostly identical results.
+the difference between a 32 core machine with 12.5 gbit nic and a 128 core machine with a 170gbit nic is zero. There 
+was a max concurrency reached at around 1 thread/file that had the greatest performance, most likely because 
+ClickHouse did not deem the files large enough to download parts concurrently. 166M rows/s is nothing to scoff at.
+
+We compared hot performance to avoid expensive listing API calls, as with the IceDB S3 proxy these are much faster. 
+For the 186 files, maybe 150 list calls were required due to the 
 
 Use custom minio clusters on local nvmes with 100gbit nics if you want IceDB + ClickHouse to beat out BigQuery, 
 especially if you use BigHouse (run clickhouse like bigquery)! With minio, you should expect to see multiple times 
-speed boosts on query performance, but it's a lot more to manage than S3 of course. As illustrated in 
+speed boosts on query performance, but it's a lot more to manage and more expensive than S3 of course. As 
+illustrated in 
 https://altinity.com/blog/clickhouse-object-storage-performance-minio-vs-aws-s3 we can see that querying with 16 
-cores to minio is faster than 64 to S3 💀. This post also seems to confirm that past 16vCPU with S3 you don't see 
-much benefit, which is in line with my findings.
-
-I would expect a sufficient minio cluster to outperform S3 by 3-5x in terms of reducing query response times.
+cores to minio is faster than 64 to S3 💀. I would expect a sufficient minio cluster to outperform S3 by 3-5x in 
+terms of reducing query response times, and also have far less variance in response times
 
 **Ultimately comparing queries on S3 + ClickHouse using IceDB vs BigQuery, BigQuery loses in price/performance by a lot.**
 
@@ -676,6 +804,8 @@ a bit slower on ClickHouse using a 128vCPU machine costs less than a cent, where
 one 
 second but read 77GB, costing ~$0.54. That's >54x more expensive to run a query on BigQuery. But then again I bet 
 ClickHouse with 1/4 the resources queries 2x as fast as BigQuery with minio.
+
+For these queries, BigQuery used 7min 56sec slot time, which is ~4076 vCPU.
 
 ### Bonus: Testing the IceDB S3 Proxy
 
