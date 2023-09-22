@@ -36,16 +36,7 @@ def part_func(row: dict) -> str:
     return part
 
 
-def format_row(row: dict) -> dict:
-    """
-    Considering this would be a materialized view on raw incoming data,
-    we prepare it differently than `simple-full.py`
-    """
-    del row['properties'] # drop properties because we don't need it for this table
-    return row
-
-
-ice = get_ice(s3c, part_func, format_row)
+ice = get_ice(s3c, part_func)
 ice.custom_merge_query = """
 select sum(cnt)::INT8 as cnt, max(ts) as ts, user_id, event
 from source_files
@@ -64,30 +55,34 @@ example_events = [
         "ts": 1686176939445,
         "event": "page_load",
         "user_id": "user_a",
-        "properties": {
+        "cnt": 1, # seed the incoming columns with the count to sum
+        "properties": json.dumps({
             "page_name": "Home"
-        },
+        }),
     }, {
         "ts": 1676126229999,
         "event": "page_load",
         "user_id": "user_b",
-        "properties": {
+        "cnt": 1, # seed the incoming columns with the count to sum
+        "properties": json.dumps({
             "page_name": "Home"
-        },
+        }),
     }, {
         "ts": 1686176939666,
         "event": "page_load",
         "user_id": "user_a",
-        "properties": {
+        "cnt": 1, # seed the incoming columns with the count to sum
+        "properties": json.dumps({
             "page_name": "Settings"
-        },
+        }),
     }, {
         "ts": 1686176941445,
         "event": "page_load",
         "user_id": "user_a",
-        "properties": {
+        "cnt": 1, # seed the incoming columns with the count to sum
+        "properties": json.dumps({
             "page_name": "Home"
-        },
+        }),
     }
 ]
 

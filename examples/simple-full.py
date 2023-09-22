@@ -25,15 +25,8 @@ def part_func(row: dict) -> str:
     return part
 
 
-def format_row(row: dict) -> dict:
-    """
-    We can take the row as-is, except let's make the properties a JSON string for safety
-    """
-    row['properties'] = json.dumps(row['properties'])  # convert nested dict to json string
-    return row
 
-
-ice = get_ice(s3c, part_func, format_row)
+ice = get_ice(s3c, part_func)
 
 # Some fake events that we are ingesting
 example_events = [

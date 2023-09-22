@@ -32,15 +32,8 @@ def part_func(row: dict) -> str:
     return part
 
 
-def format_row(row: dict) -> dict:
-    """
-    No special preparation required in this example, other than converting the JSON to a string
-    """
-    row['properties'] = json.dumps(row['properties'])  # convert nested dict to json string
-    return row
 
-
-ice = get_ice(s3c, part_func, format_row)
+ice = get_ice(s3c, part_func)
 ice.custom_merge_query = """
 select user_id, arg_max(event, ts) as event, max(ts) as ts, arg_max(properties, ts) as properties
 from source_files
@@ -53,30 +46,30 @@ example_events = [
         "ts": 1686176939445,
         "event": "page_load",
         "user_id": "user_a",
-        "properties": {
+        "properties": json.dumps({
             "page_name": "Home"
-        },
+        }),
     }, {
         "ts": 1676126229999,
         "event": "page_load",
         "user_id": "user_b",
-        "properties": {
+        "properties": json.dumps({
             "page_name": "Home"
-        },
+        }),
     }, {
         "ts": 1686176939666,
         "event": "page_load",
         "user_id": "user_a",
-        "properties": {
+        "properties": json.dumps({
             "page_name": "Settings"
-        },
+        }),
     }, {
         "ts": 1686176941445,
         "event": "page_load",
         "user_id": "user_a",
-        "properties": {
+        "properties": json.dumps({
             "page_name": "Home"
-        },
+        }),
     }
 ]
 
@@ -85,30 +78,30 @@ later_events = [
         "ts": 1686176939446,
         "event": "page_load",
         "user_id": "user_a",
-        "properties": {
+        "properties": json.dumps({
             "page_name": "Home"
-        },
+        }),
     }, {
         "ts": 1676126230000,
         "event": "page_load",
         "user_id": "user_b",
-        "properties": {
+        "properties": json.dumps({
             "page_name": "Home"
-        },
+        }),
     }, {
         "ts": 1686176939667,
         "event": "page_load",
         "user_id": "user_a",
-        "properties": {
+        "properties": json.dumps({
             "page_name": "Settings"
-        },
+        }),
     }, {
         "ts": 1686176941446,
         "event": "page_load",
         "user_id": "user_a",
-        "properties": {
+        "properties": json.dumps({
             "page_name": "Home"
-        },
+        }),
     }
 ]
 

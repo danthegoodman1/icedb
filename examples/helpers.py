@@ -51,7 +51,7 @@ def delete_all_s3(s3c: S3Client):
         )
     print(f"deleted {len(s3_files)} files")
 
-def get_ice(s3_client, part_func, format_row):
+def get_ice(s3_client, part_func):
     return IceDBv3(
     part_func,
     ['event', 'ts'],  # We are doing to sort by event, then timestamp of the event within the data part
@@ -62,6 +62,5 @@ def get_ice(s3_client, part_func, format_row):
     s3_client,
     "dan-mbp",
     s3_use_path=True,  # needed for local minio
-    format_row=format_row,
     compression_codec=CompressionCodec.ZSTD  # Let's force a higher compression level, default is SNAPPY
 )

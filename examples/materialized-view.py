@@ -41,28 +41,10 @@ def part_func_mv(row: dict) -> str:
     return part
 
 
-def format_row_raw(row: dict) -> dict:
-    """
-    We can take the row as-is, except let's make the properties a JSON string for safety
-    """
-    row['properties'] = json.dumps(row['properties'])  # convert nested dict to json string
-    return row
-
-
-def format_row_mv(row: dict) -> dict:
-    """
-    Considering this would be a materialized view on raw incoming data,
-    we prepare it differently than `simple-full.py`
-    """
-    del row['properties'] # drop properties because we don't need it for this table
-    row['cnt'] = 1 # seed the incoming columns with the count to sum
-    return row
-
-
 # This will be for the raw events
-ice_raw = get_ice(s3c_raw, part_func_raw, format_row_raw)
+ice_raw = get_ice(s3c_raw, part_func_raw)
 # This will be for our materialized view
-ice_mv = get_ice(s3c_mv, part_func_mv, format_row_mv)
+ice_mv = get_ice(s3c_mv, part_func_mv)
 ice_mv.custom_merge_query = """
 select sum(cnt)::INT8 as cnt, max(ts) as ts, user_id, event
 from source_files
@@ -75,30 +57,34 @@ example_events = [
         "ts": 1686176939445,
         "event": "page_load",
         "user_id": "user_a",
-        "properties": {
+        "cnt": 1, # seed the incoming columns with the count to sum
+        "properties": json.dumps({
             "page_name": "Home"
-        },
+        }),
     }, {
         "ts": 1676126229999,
         "event": "page_load",
         "user_id": "user_b",
-        "properties": {
+        "cnt": 1, # seed the incoming columns with the count to sum
+        "properties": json.dumps({
             "page_name": "Home"
-        },
+        }),
     }, {
         "ts": 1686176939666,
         "event": "page_load",
         "user_id": "user_a",
-        "properties": {
+        "cnt": 1, # seed the incoming columns with the count to sum
+        "properties": json.dumps({
             "page_name": "Settings"
-        },
+        }),
     }, {
         "ts": 1686176941445,
         "event": "page_load",
         "user_id": "user_a",
-        "properties": {
+        "cnt": 1, # seed the incoming columns with the count to sum
+        "properties": json.dumps({
             "page_name": "Home"
-        },
+        }),
     }
 ]
 
