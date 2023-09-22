@@ -217,6 +217,8 @@ Iceberg has a few problems right now in my eyes:
 2. Very complex (look at any example - requires schema definition, cataloging is verbose, it's really a painful DX)
 3. Very few ways to read it (a few DBs like ClickHouse can read the catalog, but you couldn't casually bring it in 
    to your Go code [like you can with icedb](https://github.com/danthegoodman1/IceDBS3Proxy/tree/main/icedb))
+4. Really painful to import existing data, you basically have to write it through Iceberg which is going to be very 
+   slow and wasteful
 
 **I specifically designed IceDB to be super easy to use in any language:**
 
@@ -230,6 +232,11 @@ Iceberg has a few problems right now in my eyes:
    on their data. The [S3 proxy](https://github.com/danthegoodman1/IceDBS3Proxy) is designed to handle this with 
    virtual buckets and prefix enforcement. You can even extend checks on table permissions before submitting queries 
    :)
+5. Much easier to import existing datasets by writing to `_data` subdirectory (just rename files) and writing a log 
+   file manually to the 
+   `_log` subdirectory 
+   using 
+   the [log format](ARCHITECTURE.md).
 
 ### When not to use IceDB
 
