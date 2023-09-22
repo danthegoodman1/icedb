@@ -206,6 +206,30 @@ provision resources dynamically based on how much data needs to be read.
 Beyond the comical management overhead, performance is shown to be inferior to other solutions, and the flexibility
 of these systems is paid 10-fold over in complexity.
 
+### Why not Iceberg?
+
+Ah, yes... I probably named IceDB too close. In all fairness, I named IceDB before I knew about Iceberg.
+
+Iceberg has a few problems right now in my eyes:
+
+1. Very few ways to write to it (spark, pyiceberg)
+2. Very complex (look at any example - requires schema definition, cataloging is verbose, it's really a painful DX)
+3. Very few ways to read it (a few DBs like ClickHouse can read the catalog, but you couldn't casually bring it in 
+   to your Go code [like you can with icedb](https://github.com/danthegoodman1/IceDBS3Proxy/tree/main/icedb))
+
+**I specifically designed IceDB to be super easy to use in any language:**
+
+1. The log is just newline-delimited JSON, any language can easily read JSON. Other serialization formats are hard 
+   and vary extremely by language (like protobuf)
+2. With the [S3 Proxy](https://github.com/danthegoodman1/IceDBS3Proxy) no readers have to understand the log, they 
+   only need to understand how to read parquet (every language can do this now)
+3. Very simple DX. Check the [examles](examples), it's far easier to use than pyIceberg, and I'd argue it's more 
+   flexible too based on the exposed primitives and extensibility
+4. Strong multitenancy with the S3 proxy (or a custom system), this means you can let your customers run sql queries 
+   on their data. The [S3 proxy](https://github.com/danthegoodman1/IceDBS3Proxy) is designed to handle this with 
+   virtual buckets and prefix enforcement. You can even extend checks on table permissions before submitting queries 
+   :)
+
 ### When not to use IceDB
 
 - If you need answers in <100ms, consider ClickHouse or Tinybird (well-designed materialized views in IceDB can provide
