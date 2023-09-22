@@ -224,7 +224,7 @@ Iceberg has a few problems right now in my eyes:
    and vary extremely by language (like protobuf)
 2. With the [S3 Proxy](https://github.com/danthegoodman1/IceDBS3Proxy) no readers have to understand the log, they 
    only need to understand how to read parquet (every language can do this now)
-3. Very simple DX. Check the [examles](examples), it's far easier to use than pyIceberg, and I'd argue it's more 
+3. Very simple DX. Check the [examples](examples), it's far easier to use than pyIceberg, and I'd argue it's more 
    flexible too based on the exposed primitives and extensibility
 4. Strong multitenancy with the S3 proxy (or a custom system), this means you can let your customers run sql queries 
    on their data. The [S3 proxy](https://github.com/danthegoodman1/IceDBS3Proxy) is designed to handle this with 
