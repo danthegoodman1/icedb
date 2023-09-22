@@ -28,6 +28,7 @@ It is also ideal for multi-tenant workloads where your end users want to directl
     * [Why not BigQuery or Athena?](#why-not-bigquery-or-athena)
     * [Why not ClickHouse, TimescaleDB, RedShift, etc.?](#why-not-clickhouse-timescaledb-redshift-etc)
     * [Why not the Spark/Flink/EMR ecosystem](#why-not-the-sparkflinkemr-ecosystem)
+    * [Why not Iceberg?](#why-not-iceberg)
     * [When not to use IceDB](#when-not-to-use-icedb)
   * [Tips before you dive in](#tips-before-you-dive-in)
     * [Insert in large batches](#insert-in-large-batches)
