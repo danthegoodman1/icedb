@@ -6,7 +6,7 @@ IceDB runs stateless with a log in S3, meaning that you only pay for storage and
 true serverless analytical processing. It does
 so in an open and easily readable format to allow for any language or framework to parse the icedb log (jsonl) and read
 the
-data (parquet)
+data (parquet).
 
 The IceDB log keeps track of alive data files, as well as the running schema which is updated via insertion. Query
 engines such as DuckDB, ClickHouse, CHDB, Datafusion, Pandas, or custom parquet readers in any
