@@ -149,6 +149,9 @@ decoupled storage (data and metadata) and compute, easily self-hosted, open sour
 multi-tentant, and ready for massive scale.
 
 ![comparison charts](img/icedb-comparison.png)
+_To be transparent, I’ve omitted systems I’ve never used before (such as databricks), and do not have extensive 
+experience with some 
+(such as Snowflake)._
 
 ### Why IceDB?
 
