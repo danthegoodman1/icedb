@@ -1,28 +1,38 @@
 # IceDB
 
-An in-process Parquet merge engine for better data warehousing in S3. Inserts, merges, and tombstone cleanup powered by
-Python and DuckDB.
-IceDB runs stateless with a log in S3, meaning that you only pay for storage and compute during operations, enabling
-true serverless analytical processing. It does
-so in an open and easily readable format to allow for any language or framework to parse the icedb log (jsonl) and read
-the
-data (parquet).
+IceDB is an in-process Parquet merge engine for better data warehousing in S3, using only S3.
 
-The IceDB log keeps track of alive data files, as well as the running schema which is updated via insertion. Query
-engines such as DuckDB, ClickHouse, CHDB, Datafusion, Pandas, or custom parquet readers in any
-language can easily read IceDB data in hundreds milliseconds,
-especially when combined with the [IceDB S3 Proxy](https://github.com/danthegoodman1/IceDBS3Proxy). See more in the
-[ARCHITECTURE.md](ARCHITECTURE.md)
+IceDB runs stateless, and stores data in easily readable formats to allow any language or framework to parse 
+the log (jsonl) and read the data (parquet), making it far easier to insert, migrate, query, run, and scale than alternatives.
 
-IceDB is targeted at data warehouse use cases to replace systems like BigQuery, Athena, and Snowflake, but with
+It's queryable by anything that understands parquet, and runs 54x 
+cheaper than managed solutions such as BigQuery, Snowflake, and Athena.
+
+IceDB tracks table schemas as standard SQL types, supports dynamic schema evolution, and divides your data into tables 
+and partitions.
+
+IceDB merges parquet files and manages tombstone cleanup to optimize your data storage for faster queries, very similar 
+to what systems like ClickHouse do under the hood. Except IceDB does it effectively stateless: All state and storage 
+is in S3. This makes it extremely easy to run and scale. When you need to introduce concurrent mutations at the 
+table level, you can introduce coordination through exclusive locks. The IceDB log format also uses the 
+widely understood newline-delimited JSON format, making it trivial to read from any language.
+
+It retains many of the features of modern OLAP systems (such as ClickHouse’s Materialized Views), adds some new ones,
+and makes it way easier to build scalable data systems with a focus on true multi-tenancy.
+
+IceDB can replace systems like BigQuery, Athena, and Snowflake, but with
 clever data design can also replace provisioned solutions such as a ClickHouse cluster, Redshift, and more.
 
-It is also ideal for multi-tenant workloads where your end users want to directly submit SQL
+Query engines such as DuckDB, ClickHouse, CHDB, Datafusion, Pandas, or custom parquet readers in any language can 
+easily read IceDB data in hundreds of milliseconds, and even faster when combined with the [IceDB S3 Proxy](https://github.com/danthegoodman1/IceDBS3Proxy) for transparent queries (the client just thinks it's S3) like with 
+the ClickHouse S3 function `s3('https://icedb-s3-proxy/**/*.parquet')` or DuckDB's
+`read_parquet('s3://icedb-s3-proxy/**/*.parquet')`.
 
 <!-- TOC -->
 * [IceDB](#icedb)
-  * [Performance test](#performance-test)
+  * [How does IceDB work?](#how-does-icedb-work)
   * [Examples](#examples)
+  * [Performance test](#performance-test)
   * [Comparisons to other systems](#comparisons-to-other-systems)
     * [Why IceDB?](#why-icedb)
     * [Why not BigQuery or Athena?](#why-not-bigquery-or-athena)
@@ -55,79 +65,20 @@ It is also ideal for multi-tenant workloads where your end users want to directl
       * [Aggregating Data on Merge](#aggregating-data-on-merge)
 <!-- TOC -->
 
-## Performance test
+## How does IceDB work?
 
-From the test, inserting 2000 times with 2 parts, shows performance against S3 and reading in the state and schema
+Inserts, merges, and tombstone cleanup are powered by Python and DuckDB.
+IceDB runs stateless with a log in S3, meaning that you only pay for storage and compute during operations, enabling
+true serverless analytical processing. It does
+so in an open and easily readable format to allow for any language or framework to parse the icedb log (jsonl) and read
+the data (parquet).
 
-```
-============== insert hundreds ==============
-this will take a while...
-inserted 200
-inserted hundreds in 11.283345699310303
-reading in the state
-read hundreds in 0.6294591426849365
-files 405 logs 202
-verify expected results
-got 405 alive files
-[(406, 'a'), (203, 'b')] in 0.638556957244873
-merging it
-merged partition cust=test/d=2023-02-11 with 203 files in 1.7919442653656006
-read post merge state in 0.5759727954864502
-files 406 logs 203
-verify expected results
-got 203 alive files
-[(406, 'a'), (203, 'b')] in 0.5450308322906494
-merging many more times to verify
-merged partition cust=test/d=2023-06-07 with 200 files in 2.138633966445923
-merged partition cust=test/d=2023-06-07 with 3 files in 0.638775110244751
-merged partition None with 0 files in 0.5988118648529053
-merged partition None with 0 files in 0.6049611568450928
-read post merge state in 0.6064021587371826
-files 408 logs 205
-verify expected results
-got 2 alive files
-[(406, 'a'), (203, 'b')] in 0.0173952579498291
-tombstone clean it
-tombstone cleaned 4 cleaned log files, 811 deleted log files, 1012 data files in 4.3332929611206055
-read post tombstone clean state in 0.0069119930267333984
-verify expected results
-got 2 alive files
-[(406, 'a'), (203, 'b')] in 0.015745878219604492
+The IceDB log keeps track of alive data files, as well as the running schema which is updated via insertion. Query
+engines such as DuckDB, ClickHouse, CHDB, Datafusion, Pandas, or custom parquet readers in any
+language can easily read IceDB data in hundreds milliseconds,
+especially when combined with the [IceDB S3 Proxy](https://github.com/danthegoodman1/IceDBS3Proxy).
 
-============== insert thousands ==============
-this will take a while...
-inserted 2000
-inserted thousands in 107.14211988449097
-reading in the state
-read thousands in 7.370793104171753
-files 4005 logs 2002
-verify expected results
-[(4006, 'a'), (2003, 'b')] in 6.49034309387207
-merging it
-breaking on marker count
-merged 2000 in 16.016802072525024
-read post merge state in 6.011193037033081
-files 4006 logs 2003
-verify expected results
-[(4006, 'a'), (2003, 'b')] in 6.683710098266602
-# laptop became unstable around here
-```
-
-Some notes:
-
-1. Very impressive state read performance with so many files (remember it has to open each one and accumulate the
-   state!)
-2. Merging happens very quick
-3. Tombstone cleaning happens super quick as well
-4. DuckDB performs surprisingly well with so many files (albeit they are one or two rows each)
-5. At hundreds of log files and partitions (where most tables should live at), performance was exceptional
-6. Going from hundreds to thousands, performance is nearly perfectly linear, sometimes even super linear (merges)!
-
-Having such a large log files (merged but not tombstone cleaned) is very unrealistic. Chances are worst case you
-have <100 log files and hundreds or low thousands of data files. Otherwise you are either not merging/cleaning
-enough, or your partition scheme is far too granular.
-
-The stability of my laptop struggled when doing the thousands test, so I only showed where I could consistently get to.
+See more in [ARCHITECTURE.md](ARCHITECTURE.md)
 
 ## Examples
 
@@ -141,6 +92,10 @@ validation before insert, and more.
 - [Verify schema before insert](examples/verify-schema.py)
 - API using [flask](examples/api-flask.py) and [falcon](examples/api-falcon.py)
 - [Segment webhook sink](examples/segment-webhook-sink.py)
+
+## Performance test
+
+See [perf_tests](perf_tests)
 
 ## Comparisons to other systems
 
