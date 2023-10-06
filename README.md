@@ -2,6 +2,8 @@
 
 IceDB is an in-process Parquet merge engine for better data warehousing in S3, using only S3.
 
+No Spark, no JVM, no data warehouse experience required.
+
 IceDB runs stateless, and stores data in easily readable formats to allow any language or framework to parse 
 the log (jsonl) and read the data (parquet), making it far easier to insert, migrate, query, run, and scale than alternatives.
 
