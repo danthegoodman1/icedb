@@ -382,7 +382,8 @@ Merge performance here seems to be entirely based on log size, as there is no di
 and 3 larger files. Running an empty merge takes 16.21 seconds :P. This indicates to me that the time to actually 
 process files for merging even 40 files was well beyond sub-second.
 
-Files were kept at a max size ~100MB.
+Files were kept at a max size ~100MB (which was too small, and hampered performance due to high time ot first byte 
+latency in S3).
 
 #### Queries (post merge and tombstone clean (2x), direct file access, m7a.32xlarge 128vCPU)
 
