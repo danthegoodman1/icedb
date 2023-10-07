@@ -186,7 +186,7 @@ The larger the batches, the more efficient uploads are as compression becomes mo
 time of writing roughly in order of slowness are:
 
 - Calculating the partition for each row (this is not parallelized)
-- Adding `_row_id` if it doesn't already exist
+- Adding `_row_id` if it doesn't already exist (removed in later versions)
 - Converting the rows into pyarrow tables so that DuckDB can zero-copy upload them to S3
 
 The upload to S3 actually is the fastest step many times over!

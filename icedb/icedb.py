@@ -32,7 +32,7 @@ class IceDBv3:
     row_group_size: int
     path_safe_hostname: str
     compression_codec: CompressionCodec
-    auto_copy: bool
+    preserve_partition: bool
     max_threads: int
     duckdb_ext_dir: str
 
@@ -53,7 +53,7 @@ class IceDBv3:
             unique_row_key: str = None,
             row_group_size: int = 122_880,
             compression_codec: CompressionCodec = CompressionCodec.SNAPPY,
-            auto_copy: bool = True,
+            preserve_partition: bool = False,
             max_threads: int = os.cpu_count()
     ):
         self.partition_function = partition_function
@@ -64,9 +64,8 @@ class IceDBv3:
         self.s3c = s3_client
         self.custom_merge_query = custom_merge_query
         self.custom_insert_query = custom_insert_query
-        self.auto_copy = auto_copy
+        self.preserve_partition = preserve_partition
         self.max_threads = max_threads
-
         self.duckdb_ext_dir = duckdb_ext_dir
         self.s3_region = s3_region
         self.s3_access_key = s3_access_key
@@ -111,10 +110,6 @@ class IceDBv3:
         """
         running_schema = Schema()
 
-        # seed _row_id if it doesn't exist
-        rows[0]['_row_id'] = "" if self.unique_row_key is None else rows[0][self.unique_row_key]
-        _rows = pa.Table.from_pylist(rows)
-
         # get schema
         ddb = self.get_duckdb()
         ddb.execute("describe {}".format("select * from _rows" if self.custom_insert_query is None
@@ -133,9 +128,6 @@ class IceDBv3:
         if self.s3c.s3prefix is not None:
             path_parts = [self.s3c.s3prefix] + path_parts
         fullpath = '/'.join(path_parts)
-
-        for row in part_ref:
-            row['_row_id'] = str(uuid4()) if self.unique_row_key is None else row[self.unique_row_key]
 
         # py arrow table for inserting into duckdb
         _rows = pa.Table.from_pylist(part_ref)
@@ -192,15 +184,12 @@ class IceDBv3:
         data to be inserted. Must have the expected keys of the partitioning strategy and the sorting order
         """
         part_map: Dict[str, list[dict]] = {}
-        s = time()
         for row in rows:
             part: str
             if "_partition" in row:
-                if self.auto_copy:
-                    # only copy if we need to delete it
-                    row = deepcopy(row)
                 part = row["_partition"]
-                del row["_partition"]
+                if not self.preserve_partition:
+                    del row["_partition"]
             else:
                 part = self.partition_function(row)
 

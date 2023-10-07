@@ -322,8 +322,11 @@ ice = IceDBv3(partition_strategy=part_strat, sort_order=['event', 'timestamp'])
 ```
 
 Additionally, a `_partition` property can be pre-defined on the row, which will avoid running the `part_func` and 
-use this instead (for example if you calculate this on ingest). This property will be dropped before copying the row 
-if `auto_copy` is enabled.
+use this instead (for example if you calculate this on ingest). This property will be deleted from the row before 
+insert, so if you intend on re-using the row or intend for that to be stored in the row, you should provide an 
+additional property named something else (e.g. `__partition` or `partition`). You can use `preserve_partition=True` 
+to prevent IceDB from deleting this property on each row. Generally it's faster to delete it, as the time to delete 
+for large batches is smaller than the extra data copy time.
 
 ### Sorting Order (`sort_order`)
 
@@ -539,12 +542,10 @@ from _rows
 order by event, time
 ```
 
-### Handling `_row_id`
+#### De-duplicating Data on Merge
 
-#### Deduplicating Data on Merge
-
-By default, no action is taken on `_row_id`. However you can use this to deduplicate in both analytical queries, and
-custom merge queries.
+By default, no data is attempted to be de-duplicated. You can provider deterministic row IDs (or pre-defined) and 
+deduplicate during merge.
 
 For example, if you wanted merges to take any (but only a single) value for a given `_row_id`, you might use:
 
