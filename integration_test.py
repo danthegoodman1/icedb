@@ -106,7 +106,7 @@ try:
     print("============= schema introspection ==================")
     schema = ice.get_schema(example_events)
     schemaJSON = schema.toJSON()
-    assert schemaJSON == '{"ts": "BIGINT", "event": "VARCHAR", "user_id": "VARCHAR", "properties": "VARCHAR", "_row_id": "VARCHAR"}'
+    assert schemaJSON == '{"ts": "BIGINT", "event": "VARCHAR", "user_id": "VARCHAR", "properties": "VARCHAR"}'
     print("schema valid")
 
     print("============= inserting ==================")
