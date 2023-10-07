@@ -110,6 +110,9 @@ class IceDBv3:
         """
         running_schema = Schema()
 
+        # py arrow table
+        _rows = pa.Table.from_pylist(rows)
+
         # get schema
         ddb = self.get_duckdb()
         ddb.execute("describe {}".format("select * from _rows" if self.custom_insert_query is None
