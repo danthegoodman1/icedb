@@ -222,7 +222,7 @@ IceDB can easily insert hundreds of thousands of rows per second per instance, a
 hundreds of millions of rows per second.
 
 Performance depends on a variety of things such as query engine, network/disk, and how efficiently 
-you data is merged at query time.
+your data is merged at query time.
 
 See [perf_tests](perf_tests) for examples.
 
