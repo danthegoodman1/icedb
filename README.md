@@ -219,7 +219,9 @@ validation before insert, and more.
 ## Performance test
 
 IceDB can easily insert hundreds of thousands of rows per second per instance, and query engines can query upwards of 
-hundreds of millions of rows per second. This largely depends on query engine, network and disk, and how efficiently 
+hundreds of millions of rows per second.
+
+Performance depends on a variety of things such as query engine, network/disk, and how efficiently 
 you data is merged at query time.
 
 See [perf_tests](perf_tests) for examples.
