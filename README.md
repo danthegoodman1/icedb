@@ -218,7 +218,7 @@ validation before insert, and more.
 
 ## Performance test
 
-IceDB can easily insert hundreds of thousands of rows per second per instance, and query engines can query at up to 
+IceDB can easily insert hundreds of thousands of rows per second per instance, and query engines can query upwards of 
 hundreds of millions of rows per second. This largely depends on query engine, network and disk, and how efficiently 
 you data is merged at query time.
 
