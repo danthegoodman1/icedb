@@ -81,7 +81,7 @@ ddb = get_local_ddb()
 query = ("select user_id, count(*), (properties::JSON)->>'page_name' as page "
          "from read_parquet([{}]) "
          "group by user_id, page "
-         "order by count(user_id) desc").format(
+         "order by count(*) desc").format(
     ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
 )
 print(ddb.sql(query))
@@ -110,7 +110,7 @@ alive_files = list(filter(lambda x: x.tombstone is None, f1))
 query = ("select user_id, count(*), (properties::JSON)->>'page_name' as page "
          "from read_parquet([{}]) "
          "group by user_id, page "
-         "order by count(user_id) desc").format(
+         "order by count(*) desc").format(
     ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
 )
 print(ddb.sql(query))
@@ -133,7 +133,7 @@ alive_files = list(filter(lambda x: x.tombstone is None, f1))
 query = ("select user_id, count(*), (properties::JSON)->>'page_name' as page "
          "from read_parquet([{}]) "
          "group by user_id, page "
-         "order by count(user_id) desc").format(
+         "order by count(*) desc").format(
     ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
 )
 print(ddb.sql(query))

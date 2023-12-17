@@ -233,6 +233,8 @@ class IceLogIO:
     list[LogTombstone]]:
         """
         Reads the current state of the log for a given set of files, not meant to be used externally.
+
+        Returns the schema, file markers, log tombstones, and the list of log files read.
         """
         total_schema = Schema()
         file_markers: Dict[str, FileMarker] = {}
@@ -309,7 +311,9 @@ class IceLogIO:
     def read_at_max_time(self, s3client: S3Client, timestamp: int) -> tuple[Schema, list[FileMarker],
     list[LogTombstone], list[str]]:
         """
-        Read the current state of the log up to a given timestamp
+        Read the current state of the log up to a given timestamp.
+
+        Returns the schema, file markers, log tombstones, and the list of log files read.
         """
         s3_files = self.get_current_log_files(s3client)
 
