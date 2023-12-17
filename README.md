@@ -175,6 +175,7 @@ print(ddb.sql(query))
 ```
 
 ```
+inserted [{"p": "example/_data/u=user_a/d=2023-06-07/c2bc1eef-b2cd-404a-9ec6-097e27d3130f.parquet", "b": 693, "t": 1702822195892}, {"p": "example/_data/u=user_b/d=2023-02-11/2d8cb9b1-450f-455f-84e0-527b8fb35d5f.parquet", "b": 585, "t": 1702822195894}]
 ┌─────────┬──────────────┬──────────┐
 │ user_id │ count_star() │   page   │
 │ varchar │    int64     │ varchar  │
