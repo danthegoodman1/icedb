@@ -26,7 +26,6 @@ class IceDBv3:
     partition_function: PartitionFunctionType
     sort_order: List[str]
     s3c: S3Client
-    unique_row_key: str | None
     custom_merge_query: str | None
     custom_insert_query: str | None
     row_group_size: int
@@ -50,7 +49,6 @@ class IceDBv3:
             duckdb_ext_dir: str = None,
             custom_merge_query: str = None,
             custom_insert_query: str = None,
-            unique_row_key: str = None,
             row_group_size: int = 122_880,
             compression_codec: CompressionCodec = CompressionCodec.SNAPPY,
             preserve_partition: bool = False,
@@ -60,7 +58,6 @@ class IceDBv3:
         self.sort_order = sort_order
         self.row_group_size = row_group_size
         self.path_safe_hostname = path_safe_hostname
-        self.unique_row_key = unique_row_key
         self.s3c = s3_client
         self.custom_merge_query = custom_merge_query
         self.custom_insert_query = custom_insert_query

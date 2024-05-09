@@ -50,11 +50,10 @@ the ClickHouse S3 function `s3('https://icedb-s3-proxy/**/*.parquet')` or DuckDB
     * [Schema validation before insert](#schema-validation-before-insert)
     * [Tracking the running schema](#tracking-the-running-schema)
   * [Usage](#usage)
-    * [Partition function (`part_func`)](#partition-function-partfunc)
-    * [Sorting Order (`sort_order`)](#sorting-order-sortorder)
-    * [`unique_row_key` (`_row_id`)](#uniquerowkey-rowid)
-    * [Removing partitions (`remove_partitions`)](#removing-partitions-removepartitions)
-    * [Rewriting partitions (`rewrite_partition`)](#rewriting-partitions-rewritepartition)
+    * [Partition function (`part_func`)](#partition-function-part_func)
+    * [Sorting Order (`sort_order`)](#sorting-order-sort_order)
+    * [Removing partitions (`remove_partitions`)](#removing-partitions-remove_partitions)
+    * [Rewriting partitions (`rewrite_partition`)](#rewriting-partitions-rewrite_partition)
   * [Pre-installing DuckDB extensions](#pre-installing-duckdb-extensions)
   * [Merging](#merging)
   * [Concurrent merges](#concurrent-merges)
@@ -445,7 +444,7 @@ def part_func(row: dict) -> str:
     return part
 
 
-ice = IceDBv3(partition_strategy=part_strat, sort_order=['event', 'timestamp'])
+ice = IceDBv3(partition_strategy=part_func, sort_order=['event', 'timestamp'])
 ```
 
 Additionally, a `_partition` property can be pre-defined on the row, which will avoid running the `part_func` and 
@@ -469,11 +468,6 @@ Example sorting by event, then timestamp:
 
 This will allow us to efficiently query for events over time as we can pick a specific event, then filter the time
 range while reducing the amount of irrelevant rows read.
-
-### `unique_row_key` (`_row_id`)
-
-If provided, will use a top-level row key as the `_row_id` for deduplication instead of generating a UUID per-row.
-Use this if your rows already have some unique ID generated.
 
 ### Removing partitions (`remove_partitions`)
 
