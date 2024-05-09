@@ -6,10 +6,8 @@ Then:
 `python simple-full.py`
 """
 
-from icedb.icedb import IceDBv3, CompressionCodec
 from icedb.log import IceLogIO
 from datetime import datetime
-import json
 from time import time
 from helpers import get_local_ddb, get_local_s3_client, delete_all_s3, get_ice
 
