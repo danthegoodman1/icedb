@@ -10,6 +10,7 @@ from icedb.log import IceLogIO
 from datetime import datetime
 from time import time
 from helpers import get_local_ddb, get_local_s3_client, delete_all_s3, get_ice
+from json import dumps
 
 s3c = get_local_s3_client()
 
@@ -29,32 +30,36 @@ ice = get_ice(s3c, part_func)
 example_events = [
     {
         "ts": 1686176939445,
+        "flt": 1.0,
         "event": "page_load",
         "user_id": "user_a",
-        "properties": {
+        "properties": dumps({
             "page_name": "Home"
-        }
+        })
     }, {
         "ts": 1676126229999,
+        "flt": 1.0,
         "event": "page_load",
         "user_id": "user_b",
-        "properties": {
+        "properties": dumps({
             "page_name": "Home"
-        }
+        })
     }, {
         "ts": 1686176939666,
+        "flt": 1.0,
         "event": "page_load",
         "user_id": "user_a",
-        "properties": {
+        "properties": dumps({
             "page_name": "Settings"
-        }
+        })
     }, {
         "ts": 1686176941445,
+        "flt": 1.0,
         "event": "page_load",
         "user_id": "user_a",
-        "properties": {
+        "properties": dumps({
             "page_name": "Home"
-        }
+        })
     }
 ]
 
@@ -68,6 +73,18 @@ log = IceLogIO("dan-mbp")
 s1, f1, t1, l1 = log.read_at_max_time(s3c, round(time() * 1000))
 alive_files = list(filter(lambda x: x.tombstone is None, f1))
 
+
+print("============= running query to see types =============")
+
+# Create a duckdb instance for querying
+ddb = get_local_ddb()
+
+# Run the query
+query = ("select * "
+         "from read_parquet([{}]) ").format(
+    ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
+)
+print(ddb.sql(query))
 
 print("============= running query =============")
 

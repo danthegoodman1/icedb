@@ -31,6 +31,7 @@ services:
       - minio
     entrypoint: >
       /bin/sh -c "
+      sleep 1;
       /usr/bin/mc alias set myminio http://minio:9000 user password;
       /usr/bin/mc mb myminio/testbucket;
       exit 0;

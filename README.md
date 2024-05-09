@@ -44,6 +44,7 @@ the ClickHouse S3 function `s3('https://icedb-s3-proxy/**/*.parquet')` or DuckDB
     * [Why not Iceberg?](#why-not-iceberg)
     * [When not to use IceDB](#when-not-to-use-icedb)
   * [Tips before you dive in](#tips-before-you-dive-in)
+    * [Forcing number types](#forcing-number-types)
     * [Insert in large batches](#insert-in-large-batches)
     * [Merge and Tombstone clean often](#merge-and-tombstone-clean-often)
     * [Large partitions, sort your data well!](#large-partitions-sort-your-data-well)
@@ -338,6 +339,56 @@ Iceberg has a few problems right now in my eyes:
   (Altinity, DoubleCloud, ClickHouse Cloud, Aiven), Tinybird, BigQuery, or Athena
 
 ## Tips before you dive in
+
+### Forcing property types
+
+JSON does not have the strict concept of `int` and `float` like many other languages (thanks JS). As a result, a number
+in JSON can be ambiguous.
+
+Python will deserialize JSON numbers as an `int` if there is no trailing decimal, and a `float` if there is a trailing decimal.
+
+Knowing this, you should force a trailing `.0` on any JSON numbers that are floats from your data source. For example insert like:
+
+```json
+{
+  "anInt": 1,
+  "aFloat": 1.0
+}
+```
+
+The same can be said for nested objects. By default, nested types will maintain their schema, meaning that if their nested objects change then there will be a schema error:
+
+```
+icedb.log.SchemaConflictException: tried to convert schema to JSON with column
+ 'properties' conflicting types: STRUCT(eee VARCHAR, page_name VARCHAR), STRUC
+  (page_name VARCHAR)
+```
+
+In order to avoid this, you may choose to stringify nested objects and arrays at the top level, turning:
+
+```json
+{
+    "ts": 1686176941445,
+    "flt": 1.0,
+    "event": "page_load",
+    "user_id": "user_a",
+    "properties": {
+        "page_name": "Home"
+    }
+}
+```
+
+into:
+
+```json
+{
+    "ts": 1686176941445,
+    "flt": 1.0,
+    "event": "page_load",
+    "user_id": "user_a",
+    "properties": "{\"page_name\":\"Home\"}"
+}
+```
 
 ### Insert in large batches
 

@@ -140,7 +140,6 @@ class IceDBv3:
                                   list(map(lambda x: str(x), schema_arrow.column('column_type'))))
 
         # copy to parquet file
-        s = time()
         retries = 0
         while retries < 3:
             try:
