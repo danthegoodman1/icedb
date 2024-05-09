@@ -23,7 +23,6 @@ def part_func(row: dict) -> str:
     return part
 
 
-
 ice = get_ice(s3c, part_func)
 
 # Some fake events that we are ingesting
