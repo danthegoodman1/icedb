@@ -157,7 +157,7 @@ class IceDBv3:
                 ))
                 break
             except duckdb.HTTPException as e:
-                if e.status_code < 500:
+                if e.status_code < 500 and e.status_code != 429:
                     raise e
                 if retries >= 3:
                     raise e
@@ -220,8 +220,8 @@ class IceDBv3:
     def merge(self, max_file_size=10_000_000, max_file_count=10, asc=False) -> tuple[
         str | None, FileMarker | None, str | None, list[FileMarker] | None, LogMetadata | None]:
         """
-        desc merge should be fast, working on active partitions. asc merge should be slow and in background,
-        slowly fully optimizes partitions over time.
+        desc merge should be done often, working on recent partitions. asc merge should be done less often,
+         fully optimizing partitions over time.
 
         Returns new_log, new_file_marker, partition, merged_file_markers, meta
         """
