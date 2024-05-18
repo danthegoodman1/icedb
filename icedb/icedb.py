@@ -254,66 +254,69 @@ class IceDBv3:
                 if acc_bytes >= max_file_size or len(acc_file_markers) > 1 and len(acc_file_markers) >= max_file_count:
                     # then we merge
                     break
-            if len(acc_file_markers) > 1:
-                # merge data parts
-                filename = str(uuid4()) + '.parquet'
-                path_parts = ['_data', partition, filename]
-                if self.s3c.s3prefix is not None:
-                    path_parts = [self.s3c.s3prefix] + path_parts
-                fullpath = '/'.join(path_parts)
+            if len(acc_file_markers) == 0:
+                # this partition had nothing to merge
+                continue
 
-                q = "COPY ({}) TO '{}' (FORMAT PARQUET, CODEC '{}', ROW_GROUP_SIZE {})".format(
-                    ("select * from source_files" if self.custom_merge_query is None else self.custom_merge_query).replace(
-                        "source_files", "read_parquet(?, hive_partitioning=1)"),
-                    's3://{}/{}'.format(self.s3c.s3bucket, fullpath),
-                    self.compression_codec.value, self.row_group_size
-                )
+            # merge data parts
+            filename = str(uuid4()) + '.parquet'
+            path_parts = ['_data', partition, filename]
+            if self.s3c.s3prefix is not None:
+                path_parts = [self.s3c.s3prefix] + path_parts
+            fullpath = '/'.join(path_parts)
 
-                ddb = self.get_duckdb()
-                ddb.execute(q, [
-                    list(map(lambda x: f"s3://{self.s3c.s3bucket}/{x.path}", acc_file_markers))
-                ])
+            q = "COPY ({}) TO '{}' (FORMAT PARQUET, CODEC '{}', ROW_GROUP_SIZE {})".format(
+                ("select * from source_files" if self.custom_merge_query is None else self.custom_merge_query).replace(
+                    "source_files", "read_parquet(?, hive_partitioning=1)"),
+                's3://{}/{}'.format(self.s3c.s3bucket, fullpath),
+                self.compression_codec.value, self.row_group_size
+            )
 
-                # get the new file size
-                obj = self.s3c.s3.head_object(
-                    Bucket=self.s3c.s3bucket,
-                    Key=fullpath
-                )
-                merged_file_size = obj['ContentLength']
+            ddb = self.get_duckdb()
+            ddb.execute(q, [
+                list(map(lambda x: f"s3://{self.s3c.s3bucket}/{x.path}", acc_file_markers))
+            ])
 
-                # Now we need to get the current state of the files we just merged, and write that plus the new state
-                # We can keep the current schema
-                merged_log_files = list(map(lambda x: x.vir_source_log_file, acc_file_markers))
-                m_schema, m_file_markers, m_tombstones = logio.read_log_forward(self.s3c, merged_log_files)
+            # get the new file size
+            obj = self.s3c.s3.head_object(
+                Bucket=self.s3c.s3bucket,
+                Key=fullpath
+            )
+            merged_file_size = obj['ContentLength']
 
-                # create new log file with tombstones
-                acc_file_paths = list(map(lambda x: x.path, acc_file_markers))
-                merged_time = round(time() * 1000)
-                new_file_marker = FileMarker(fullpath, merged_time, merged_file_size)
+            # Now we need to get the current state of the files we just merged, and write that plus the new state
+            # We can keep the current schema
+            merged_log_files = list(map(lambda x: x.vir_source_log_file, acc_file_markers))
+            m_schema, m_file_markers, m_tombstones = logio.read_log_forward(self.s3c, merged_log_files)
 
-                updated_markers = list(map(lambda x: FileMarker(
-                    x.path,
-                    x.createdMS,
-                    x.fileBytes,
-                    merged_time if x.path in acc_file_paths else x.tombstone),
-                                           m_file_markers))
+            # create new log file with tombstones
+            acc_file_paths = list(map(lambda x: x.path, acc_file_markers))
+            merged_time = round(time() * 1000)
+            new_file_marker = FileMarker(fullpath, merged_time, merged_file_size)
+
+            updated_markers = list(map(lambda x: FileMarker(
+                x.path,
+                x.createdMS,
+                x.fileBytes,
+                merged_time if x.path in acc_file_paths else x.tombstone),
+                                       m_file_markers))
 
 
-                new_tombstones = list(map(lambda x: LogTombstone(x, merged_time),
-                                          merged_log_files))
+            new_tombstones = list(map(lambda x: LogTombstone(x, merged_time),
+                                      merged_log_files))
 
-                new_log, meta = logio.append(
-                    self.s3c,
-                    1,
-                    m_schema,
-                    updated_markers + [
-                        new_file_marker
-                    ],
-                    m_tombstones + new_tombstones,
-                    merged=True
-                )
+            new_log, meta = logio.append(
+                self.s3c,
+                1,
+                m_schema,
+                updated_markers + [
+                    new_file_marker
+                ],
+                m_tombstones + new_tombstones,
+                merged=True
+            )
 
-                return new_log, new_file_marker, partition, acc_file_markers, meta
+            return new_log, new_file_marker, partition, acc_file_markers, meta
 
         # otherwise we did not merge
         return None, None, None, [], None

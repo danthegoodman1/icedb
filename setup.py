@@ -1,6 +1,6 @@
 from setuptools import setup, find_packages
 
-VERSION = '0.8.2'
+VERSION = '0.8.3'
 DESCRIPTION = 'IceDB'
 LONG_DESCRIPTION = 'Parquet merge engine'
 
@@ -18,7 +18,7 @@ setup(
         "boto3==1.26.151",
         "botocore==1.29.151",
         "duckdb==0.10.1",
-        "pyarrow==12.0.1"
+        "pyarrow==16.1.0"
     ],
     keywords=['olap', 'icedb', 'data lake', 'parquet', 'data warehouse', 'analytics'],
     classifiers= []
