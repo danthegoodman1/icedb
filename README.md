@@ -50,6 +50,7 @@ the ClickHouse S3 function `s3('https://icedb-s3-proxy/**/*.parquet')` or DuckDB
     * [Large partitions, sort your data well!](#large-partitions-sort-your-data-well)
     * [Schema validation before insert](#schema-validation-before-insert)
     * [Tracking the running schema](#tracking-the-running-schema)
+    * [Separation of log and data](#separation-of-log-and-data)
   * [Usage](#usage)
     * [Partition function (`part_func`)](#partition-function-part_func)
     * [Sorting Order (`sort_order`)](#sorting-order-sort_order)
