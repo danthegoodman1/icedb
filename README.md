@@ -44,7 +44,7 @@ the ClickHouse S3 function `s3('https://icedb-s3-proxy/**/*.parquet')` or DuckDB
     * [Why not Iceberg?](#why-not-iceberg)
     * [When not to use IceDB](#when-not-to-use-icedb)
   * [Tips before you dive in](#tips-before-you-dive-in)
-    * [Forcing number types](#forcing-number-types)
+    * [Forcing property types](#forcing-property-types)
     * [Insert in large batches](#insert-in-large-batches)
     * [Merge and Tombstone clean often](#merge-and-tombstone-clean-often)
     * [Large partitions, sort your data well!](#large-partitions-sort-your-data-well)
@@ -457,6 +457,12 @@ See a simple [example here](examples/verify-schema.py) on verifying the schema b
 
 IceDB will track the running schema natively. One caveat to this functionality is that if you remove a column as a 
 part of a partition rewrite and that column never returns, IceDB will not remove that from the schema.
+
+### Separation of log and data
+
+You can use the optional `log_s3_client` to use a different S3 client for log files. All instances of IceDB MUST have the same configuration in this regard.
+
+This is useful for when you may want to have the log in lower-latency time to first byte storage like S3 single zone express, but keep the data in lower cost storage like normal S3.
 
 ## Usage
 
