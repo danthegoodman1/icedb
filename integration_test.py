@@ -9,6 +9,12 @@ from copy import deepcopy
 s3c = S3Client(s3prefix="tenant", s3bucket="testbucket", s3region="us-east-1", s3endpoint="http://localhost:9000",
                s3accesskey="user", s3secretkey="password")
 
+# make this the same as s3c and omit `log_s3_client` param to test same client
+# log_s3c = s3c
+log_s3c = S3Client(s3prefix="tenant", s3bucket="testbucket-log", s3region="us-east-1",
+                   s3endpoint="http://localhost:9000",
+               s3accesskey="user", s3secretkey="password")
+
 
 def part_func(row: dict) -> str:
     row_time = datetime.utcfromtimestamp(row['ts'] / 1000)
@@ -26,7 +32,8 @@ ice = IceDBv3(
     s3c,
     "dan-mbp",
     s3_use_path=True,
-    compression_codec=CompressionCodec.ZSTD
+    compression_codec=CompressionCodec.ZSTD,
+    log_s3_client=log_s3c
 )
 
 example_events = [
@@ -116,7 +123,7 @@ try:
 
     # Read the state in
     log = IceLogIO("dan-mbp")
-    s1, f1, t1, l1 = log.read_at_max_time(s3c, round(time() * 1000))
+    s1, f1, t1, l1 = log.read_at_max_time(log_s3c, round(time() * 1000))
     print("============= Current State =============")
     print("schema:", s1)
     print("files:", f1)
@@ -146,7 +153,7 @@ try:
 
     # Read the state in
     log = IceLogIO("dan-mbp")
-    s1, f1, t1, l1 = log.read_at_max_time(s3c, round(time() * 1000))
+    s1, f1, t1, l1 = log.read_at_max_time(log_s3c, round(time() * 1000))
     print("=== Current State ===")
     print("schema:", s1)
     print("files:", f1)
@@ -173,7 +180,7 @@ try:
 
     # Read the state in
     log = IceLogIO("dan-mbp")
-    s1, f1, t1, l1 = log.read_at_max_time(s3c, round(time() * 1000))
+    s1, f1, t1, l1 = log.read_at_max_time(log_s3c, round(time() * 1000))
     print("=== Current State ===")
     print("schema:", s1)
     print("files:", f1)
@@ -205,7 +212,7 @@ try:
 
     # Read the state in
     log = IceLogIO("dan-mbp")
-    s1, f1, t1, l1 = log.read_at_max_time(s3c, round(time() * 1000))
+    s1, f1, t1, l1 = log.read_at_max_time(log_s3c, round(time() * 1000))
     print("=== Current State ===")
     print("schema:", s1)
     print("files:", f1)
@@ -270,7 +277,7 @@ try:
     # Verify query results are the same
     # Read the state in
     log = IceLogIO("dan-mbp")
-    s1, f1, t1, l1 = log.read_at_max_time(s3c, round(time() * 1000))
+    s1, f1, t1, l1 = log.read_at_max_time(log_s3c, round(time() * 1000))
     print("=== Current State ===")
     print("schema:", s1)
     print("files:", f1)
@@ -314,7 +321,7 @@ try:
 
     print("reading in the state")
     s = time()
-    s1, f1, t1, l1 = log.read_at_max_time(s3c, round(time() * 1000))
+    s1, f1, t1, l1 = log.read_at_max_time(log_s3c, round(time() * 1000))
     print("read hundreds in", time()-s)
 
     print("files", len(f1), "logs", len(l1))
@@ -341,7 +348,7 @@ try:
     print(f"merged partition {partition} with {len(merged_files)} files in", time()-s)
 
     s = time()
-    s1, f1, t1, l1 = log.read_at_max_time(s3c, round(time() * 1000))
+    s1, f1, t1, l1 = log.read_at_max_time(log_s3c, round(time() * 1000))
     print("read post merge state in", time() - s)
 
     print("files", len(f1), "logs", len(l1))
@@ -370,7 +377,7 @@ try:
         print(f"merged partition {partition} with {len(merged_files)} files in", time() - s)
 
     s = time()
-    s1, f1, t1, l1 = log.read_at_max_time(s3c, round(time() * 1000))
+    s1, f1, t1, l1 = log.read_at_max_time(log_s3c, round(time() * 1000))
     print("read post merge state in", time() - s)
 
     print("files", len(f1), "logs", len(l1))
@@ -397,7 +404,7 @@ try:
     print(f"tombstone cleaned {len(cleaned_log_files)} cleaned log files, {len(deleted_log_files)} deleted log files, {len(deleted_data_files)} data files in", time()-s)
 
     s = time()
-    s1, f1, t1, l1 = log.read_at_max_time(s3c, round(time() * 1000))
+    s1, f1, t1, l1 = log.read_at_max_time(log_s3c, round(time() * 1000))
     print("read post tombstone clean state in", time() - s)
 
     print("files", len(f1), "logs", len(l1))
@@ -458,7 +465,7 @@ try:
     print(f"partition removal deleted {deleted} files with the new log path {new_log}")
 
     s = time()
-    s1, f1, t1, l1 = log.read_at_max_time(s3c, round(time() * 1000))
+    s1, f1, t1, l1 = log.read_at_max_time(log_s3c, round(time() * 1000))
     print("read partition removal state in", time() - s)
 
     alive_files = list(filter(lambda x: x.tombstone is None, f1))
@@ -490,7 +497,7 @@ try:
     print(f"partition rewrite to files {rewritten} with the new log path {new_log}")
 
     s = time()
-    s1, f1, t1, l1 = log.read_at_max_time(s3c, round(time() * 1000))
+    s1, f1, t1, l1 = log.read_at_max_time(log_s3c, round(time() * 1000))
     print("read partition rewrite state in", time() - s)
 
     alive_files = list(filter(lambda x: x.tombstone is None, f1))
