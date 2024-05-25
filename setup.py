@@ -1,6 +1,6 @@
 from setuptools import setup, find_packages
 
-VERSION = '0.8.3'
+VERSION = '0.8.4'
 DESCRIPTION = 'IceDB'
 LONG_DESCRIPTION = 'Parquet merge engine'
 

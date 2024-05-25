@@ -254,7 +254,7 @@ class IceDBv3:
                 if acc_bytes >= max_file_size or len(acc_file_markers) > 1 and len(acc_file_markers) >= max_file_count:
                     # then we merge
                     break
-            if len(acc_file_markers) == 0:
+            if len(acc_file_markers) == 1:
                 # this partition had nothing to merge
                 continue
 
