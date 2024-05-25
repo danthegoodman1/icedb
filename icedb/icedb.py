@@ -25,7 +25,8 @@ PartitionRemovalFunctionType = Callable[[list[str]], list[str]]
 class IceDBv3:
     partition_function: PartitionFunctionType
     sort_order: List[str]
-    s3c: S3Client
+    data_s3c: S3Client
+    log_s3c: S3Client
     custom_merge_query: str | None
     custom_insert_query: str | None
     row_group_size: int
@@ -52,13 +53,14 @@ class IceDBv3:
             row_group_size: int = 122_880,
             compression_codec: CompressionCodec = CompressionCodec.SNAPPY,
             preserve_partition: bool = False,
-            max_threads: int = os.cpu_count()
+            max_threads: int = os.cpu_count(),
+            log_s3_client: S3Client = None
     ):
         self.partition_function = partition_function
         self.sort_order = sort_order
         self.row_group_size = row_group_size
         self.path_safe_hostname = path_safe_hostname
-        self.s3c = s3_client
+        self.data_s3c = s3_client
         self.custom_merge_query = custom_merge_query
         self.custom_insert_query = custom_insert_query
         self.preserve_partition = preserve_partition
@@ -69,6 +71,11 @@ class IceDBv3:
         self.s3_secret_key = s3_secret_key
         self.s3_endpoint = s3_endpoint
         self.s3_use_path = s3_use_path
+
+        if log_s3_client is not None:
+            self.log_s3c = log_s3_client
+        else:
+            self.log_s3c = s3_client
 
         if not isinstance(compression_codec, CompressionCodec):
             raise AttributeError(f"invalid compression codec '{compression_codec}', must be one of type CompressionCodec")
@@ -125,8 +132,8 @@ class IceDBv3:
         # upload parquet file
         filename = str(uuid4()) + '.parquet'
         path_parts = ['_data', part, filename]
-        if self.s3c.s3prefix is not None:
-            path_parts = [self.s3c.s3prefix] + path_parts
+        if self.data_s3c.s3prefix is not None:
+            path_parts = [self.data_s3c.s3prefix] + path_parts
         fullpath = '/'.join(path_parts)
 
         # py arrow table for inserting into duckdb
@@ -150,7 +157,7 @@ class IceDBv3:
                             """.format(
                     'select * from _rows order by {}'.format(
                         ','.join(self.sort_order)) if self.custom_insert_query is None else self.custom_insert_query,
-                    self.s3c.s3bucket,
+                    self.data_s3c.s3bucket,
                     fullpath,
                     self.compression_codec.value,
                     self.row_group_size
@@ -171,8 +178,8 @@ class IceDBv3:
         insert_time = round(time() * 1000)
 
         # get file metadata
-        obj = self.s3c.s3.head_object(
-            Bucket=self.s3c.s3bucket,
+        obj = self.data_s3c.s3.head_object(
+            Bucket=self.data_s3c.s3bucket,
             Key=fullpath
         )
         return FileMarker(fullpath, insert_time, obj['ContentLength']), running_schema
@@ -213,7 +220,7 @@ class IceDBv3:
 
         # Append to log
         logio = IceLogIO(self.path_safe_hostname)
-        logio.append(self.s3c, 1, running_schema, file_markers)
+        logio.append(self.log_s3c, 1, running_schema, file_markers)
 
         return file_markers
 
@@ -226,7 +233,7 @@ class IceDBv3:
         Returns new_log, new_file_marker, partition, merged_file_markers, meta
         """
         logio = IceLogIO(self.path_safe_hostname)
-        cur_schema, cur_files, cur_tombstones, all_log_files = logio.read_at_max_time(self.s3c, round(time() * 1000))
+        cur_schema, cur_files, cur_tombstones, all_log_files = logio.read_at_max_time(self.log_s3c, round(time() * 1000))
 
         # Group by partition
         partitions: Dict[str, list[FileMarker]] = {}
@@ -261,25 +268,25 @@ class IceDBv3:
             # merge data parts
             filename = str(uuid4()) + '.parquet'
             path_parts = ['_data', partition, filename]
-            if self.s3c.s3prefix is not None:
-                path_parts = [self.s3c.s3prefix] + path_parts
+            if self.data_s3c.s3prefix is not None:
+                path_parts = [self.data_s3c.s3prefix] + path_parts
             fullpath = '/'.join(path_parts)
 
             q = "COPY ({}) TO '{}' (FORMAT PARQUET, CODEC '{}', ROW_GROUP_SIZE {})".format(
                 ("select * from source_files" if self.custom_merge_query is None else self.custom_merge_query).replace(
                     "source_files", "read_parquet(?, hive_partitioning=1)"),
-                's3://{}/{}'.format(self.s3c.s3bucket, fullpath),
+                's3://{}/{}'.format(self.data_s3c.s3bucket, fullpath),
                 self.compression_codec.value, self.row_group_size
             )
 
             ddb = self.get_duckdb()
             ddb.execute(q, [
-                list(map(lambda x: f"s3://{self.s3c.s3bucket}/{x.path}", acc_file_markers))
+                list(map(lambda x: f"s3://{self.data_s3c.s3bucket}/{x.path}", acc_file_markers))
             ])
 
             # get the new file size
-            obj = self.s3c.s3.head_object(
-                Bucket=self.s3c.s3bucket,
+            obj = self.data_s3c.s3.head_object(
+                Bucket=self.data_s3c.s3bucket,
                 Key=fullpath
             )
             merged_file_size = obj['ContentLength']
@@ -287,7 +294,7 @@ class IceDBv3:
             # Now we need to get the current state of the files we just merged, and write that plus the new state
             # We can keep the current schema
             merged_log_files = list(map(lambda x: x.vir_source_log_file, acc_file_markers))
-            m_schema, m_file_markers, m_tombstones = logio.read_log_forward(self.s3c, merged_log_files)
+            m_schema, m_file_markers, m_tombstones = logio.read_log_forward(self.log_s3c, merged_log_files)
 
             # create new log file with tombstones
             acc_file_paths = list(map(lambda x: x.path, acc_file_markers))
@@ -306,7 +313,7 @@ class IceDBv3:
                                       merged_log_files))
 
             new_log, meta = logio.append(
-                self.s3c,
+                self.log_s3c,
                 1,
                 m_schema,
                 updated_markers + [
@@ -341,12 +348,12 @@ class IceDBv3:
         data_files_to_keep: dict[str, FileMarker] = {}
         schema = Schema()
 
-        current_log_files = logio.get_current_log_files(self.s3c)
+        current_log_files = logio.get_current_log_files(self.log_s3c)
         # We only need to get merge files
         merge_log_files = list(filter(lambda x: get_log_file_info(x['Key'])[1], current_log_files))
         for file in merge_log_files:
-            obj = self.s3c.s3.get_object(
-                Bucket=self.s3c.s3bucket,
+            obj = self.log_s3c.s3.get_object(
+                Bucket=self.log_s3c.s3bucket,
                 Key=file['Key']
             )
             jsonl = str(obj['Body'].read(), encoding="utf-8").split("\n")
@@ -379,16 +386,16 @@ class IceDBv3:
 
         # Delete log tombstones
         for log_path in log_files_to_delete.keys():
-            self.s3c.s3.delete_object(
-                Bucket=self.s3c.s3bucket,
+            self.log_s3c.s3.delete_object(
+                Bucket=self.log_s3c.s3bucket,
                 Key=log_path
             )
             deleted_log_files.append(log_path)
 
         # Delete data files
         for data_path in data_files_to_delete.keys():
-            self.s3c.s3.delete_object(
-                Bucket=self.s3c.s3bucket,
+            self.data_s3c.s3.delete_object(
+                Bucket=self.data_s3c.s3bucket,
                 Key=data_path
             )
             deleted_log_files.append(data_path)
@@ -397,7 +404,7 @@ class IceDBv3:
 
         # New log file
         new_log, _ = logio.append(
-            self.s3c,
+            self.log_s3c,
             1,
             schema,
             list(data_files_to_keep.values()),
@@ -409,8 +416,8 @@ class IceDBv3:
         deleted_data_files += data_files_to_delete
         # Delete the cleaned log files
         for path in cleaned_log_files:
-            self.s3c.s3.delete_object(
-                Bucket=self.s3c.s3bucket,
+            self.log_s3c.s3.delete_object(
+                Bucket=self.log_s3c.s3bucket,
                 Key=path
             )
         print(f"Keeping {len(data_files_to_keep)} files")
@@ -433,7 +440,7 @@ class IceDBv3:
         remove_time = round(time() * 1000)
 
         logio = IceLogIO(self.path_safe_hostname)
-        cur_schema, cur_files, cur_tombstones, all_log_files = logio.read_at_max_time(self.s3c, remove_time)
+        cur_schema, cur_files, cur_tombstones, all_log_files = logio.read_at_max_time(self.log_s3c, remove_time)
 
         # Group by partition (on alive files
         alive_files = list(filter(lambda x: x.tombstone is None, cur_files))
@@ -475,7 +482,7 @@ class IceDBv3:
         # Log-only merge
         log_tombstones = list(map(lambda x: LogTombstone(x, remove_time), list(modified_log_files)))
         new_log, meta = logio.append(
-            self.s3c,
+            self.log_s3c,
             1,
             cur_schema,
             updated_file_markers,
@@ -509,7 +516,7 @@ class IceDBv3:
         run_time = round(time() * 1000)
 
         logio = IceLogIO(self.path_safe_hostname)
-        cur_schema, cur_files, cur_tombstones, all_log_files = logio.read_at_max_time(self.s3c, run_time)
+        cur_schema, cur_files, cur_tombstones, all_log_files = logio.read_at_max_time(self.log_s3c, run_time)
 
         # Get alive files matching partition
         alive_files = list(filter(lambda x: x.tombstone is None, cur_files))
@@ -527,8 +534,8 @@ class IceDBv3:
             filename = str(uuid4()) + '.parquet'
             partition = self.__get_file_partition(old_file.path)
             path_parts = ['_data', partition, filename]
-            if self.s3c.s3prefix is not None:
-                path_parts = [self.s3c.s3prefix] + path_parts
+            if self.data_s3c.s3prefix is not None:
+                path_parts = [self.data_s3c.s3prefix] + path_parts
             fullpath = '/'.join(path_parts)
 
             # Copy the files through the query
@@ -537,16 +544,16 @@ class IceDBv3:
                         copy ({}) to 's3://{}/{}' (format parquet, codec '{}', row_group_size {})
                         """.format(
                 filter_query.replace("_rows", "read_parquet(?)"),
-                self.s3c.s3bucket,
+                self.data_s3c.s3bucket,
                 fullpath,
                 self.compression_codec.value,
                 self.row_group_size
-            ), [f"s3://{self.s3c.s3bucket}/{old_file.path}"])
+            ), [f"s3://{self.data_s3c.s3bucket}/{old_file.path}"])
             write_time = round(time() * 1000)
 
             # get file metadata
-            obj = self.s3c.s3.head_object(
-                Bucket=self.s3c.s3bucket,
+            obj = self.data_s3c.s3.head_object(
+                Bucket=self.data_s3c.s3bucket,
                 Key=fullpath
             )
             new_files.append(FileMarker(fullpath, write_time, obj['ContentLength']))
@@ -563,7 +570,7 @@ class IceDBv3:
                                   list(map(lambda x: x.vir_source_log_file, rewrite_targets))))
 
         new_log, meta = logio.append(
-            self.s3c,
+            self.log_s3c,
             1,
             cur_schema,
             updated_markers + new_files,

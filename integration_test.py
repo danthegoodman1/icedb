@@ -125,7 +125,7 @@ try:
 
     # Verify the results
     query = "select count(user_id), user_id from read_parquet([{}]) group by user_id order by count(user_id) desc".format(
-        ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", f1)))
+        ', '.join(list(map(lambda x: "'s3://" + ice.data_s3c.s3bucket + "/" + x.path + "'", f1)))
     )
     print('executing query:', query)
     ddb = ice.get_duckdb()
@@ -155,7 +155,7 @@ try:
 
     # Verify the results
     query = "select count(user_id), user_id from read_parquet([{}]) group by user_id order by count(user_id) desc".format(
-        ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", f1)))
+        ', '.join(list(map(lambda x: "'s3://" + ice.data_s3c.s3bucket + "/" + x.path + "'", f1)))
     )
     print('executing query:', query)
     ddb.execute(query)
@@ -182,7 +182,7 @@ try:
 
     # Verify the results
     query = "select count(user_id), user_id from read_parquet([{}]) group by user_id order by count(user_id) desc".format(
-        ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", f1)))
+        ', '.join(list(map(lambda x: "'s3://" + ice.data_s3c.s3bucket + "/" + x.path + "'", f1)))
     )
     print('executing query:', query)
     ddb.execute(query)
@@ -237,7 +237,7 @@ try:
     # Verify the results
     alive_files = list(filter(lambda x: x.tombstone is None, f1))
     query = "select count(user_id), user_id from read_parquet([{}]) group by user_id order by count(user_id) desc".format(
-        ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
+        ', '.join(list(map(lambda x: "'s3://" + ice.data_s3c.s3bucket + "/" + x.path + "'", alive_files)))
     )
     print('executing query:', query)
     ddb.execute(query)
@@ -289,7 +289,7 @@ try:
 
     alive_files = list(filter(lambda x: x.tombstone is None, f1))
     query = "select count(user_id), user_id from read_parquet([{}]) group by user_id order by count(user_id) desc".format(
-        ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
+        ', '.join(list(map(lambda x: "'s3://" + ice.data_s3c.s3bucket + "/" + x.path + "'", alive_files)))
     )
     print('executing query:', query)
     ddb.execute(query)
@@ -326,7 +326,7 @@ try:
     alive_files = list(filter(lambda x: x.tombstone is None, f1))
     print(f"got {len(alive_files)} alive files")
     query = "select count(user_id), user_id from read_parquet([{}]) group by user_id order by count(user_id) desc".format(
-        ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
+        ', '.join(list(map(lambda x: "'s3://" + ice.data_s3c.s3bucket + "/" + x.path + "'", alive_files)))
     )
     ddb.execute(query)
     res = ddb.fetchall()
@@ -353,7 +353,7 @@ try:
     alive_files = list(filter(lambda x: x.tombstone is None, f1))
     print(f"got {len(alive_files)} alive files")
     query = "select count(user_id), user_id from read_parquet([{}]) group by user_id order by count(user_id) desc".format(
-        ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
+        ', '.join(list(map(lambda x: "'s3://" + ice.data_s3c.s3bucket + "/" + x.path + "'", alive_files)))
     )
     ddb.execute(query)
     res = ddb.fetchall()
@@ -382,7 +382,7 @@ try:
     alive_files = list(filter(lambda x: x.tombstone is None, f1))
     print(f"got {len(alive_files)} alive files")
     query = "select count(user_id), user_id from read_parquet([{}]) group by user_id order by count(user_id) desc".format(
-        ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
+        ', '.join(list(map(lambda x: "'s3://" + ice.data_s3c.s3bucket + "/" + x.path + "'", alive_files)))
     )
     ddb.execute(query)
     res = ddb.fetchall()
@@ -409,7 +409,7 @@ try:
     alive_files = list(filter(lambda x: x.tombstone is None, f1))
     print(f"got {len(alive_files)} alive files")
     query = "select count(user_id), user_id from read_parquet([{}]) group by user_id order by count(user_id) desc".format(
-        ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
+        ', '.join(list(map(lambda x: "'s3://" + ice.data_s3c.s3bucket + "/" + x.path + "'", alive_files)))
     )
     ddb.execute(query)
     res = ddb.fetchall()
@@ -472,7 +472,7 @@ try:
     s = time()
     print(f"got {len(alive_files)} alive files")
     query = "select count(user_id), user_id from read_parquet([{}]) group by user_id order by count(user_id) desc".format(
-        ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
+        ', '.join(list(map(lambda x: "'s3://" + ice.data_s3c.s3bucket + "/" + x.path + "'", alive_files)))
     )
     ddb.execute(query)
     res = ddb.fetchall()
@@ -504,7 +504,7 @@ try:
     s = time()
     print(f"got {len(alive_files)} alive files")
     query = "select count(user_id), user_id from read_parquet([{}]) group by user_id order by count(user_id) desc".format(
-        ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
+        ', '.join(list(map(lambda x: "'s3://" + ice.data_s3c.s3bucket + "/" + x.path + "'", alive_files)))
     )
     ddb.execute(query)
     res = ddb.fetchall()

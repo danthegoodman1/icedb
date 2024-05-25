@@ -87,7 +87,7 @@ from datetime import datetime
 from time import time
 
 # create an s3 client to talk to minio
-s3c = S3Client(s3prefix="example", s3bucket="testbucket", s3region="us-east-1", s3endpoint="http://localhost:9000", 
+s3c = S3Client(s3prefix="example", s3bucket="testbucket", s3region="us-east-1", s3endpoint="http://localhost:9000",
                s3accesskey="user", s3secretkey="password")
 
 example_events = [
@@ -122,6 +122,7 @@ example_events = [
     }
 ]
 
+
 def part_func(row: dict) -> str:
     """
     Partition by user_id, date
@@ -129,6 +130,7 @@ def part_func(row: dict) -> str:
     row_time = datetime.utcfromtimestamp(row['ts'] / 1000)
     part = f"u={row['user_id']}/d={row_time.strftime('%Y-%m-%d')}"
     return part
+
 
 # Initialize the client
 ice = IceDBv3(
@@ -169,7 +171,7 @@ query = ("select user_id, count(*), (properties::JSON)->>'page_name' as page "
          "from read_parquet([{}]) "
          "group by user_id, page "
          "order by count(*) desc").format(
-    ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
+    ', '.join(list(map(lambda x: "'s3://" + ice.data_s3c.s3bucket + "/" + x.path + "'", alive_files)))
 )
 print(ddb.sql(query))
 ```

@@ -107,7 +107,7 @@ query = ("select user_id, event, count(*) as cnt "
          "from read_parquet([{}]) "
          "group by user_id, event, event "
          "order by count(user_id) desc").format(
-    ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
+    ', '.join(list(map(lambda x: "'s3://" + ice.data_s3c.s3bucket + "/" + x.path + "'", alive_files)))
 )
 print(ddb.sql(query))
 
@@ -120,7 +120,7 @@ query = ("select user_id, event, sum(cnt) as cnt "
          "from read_parquet([{}]) "
          "group by user_id, event "
          "order by sum(cnt) desc").format(
-    ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
+    ', '.join(list(map(lambda x: "'s3://" + ice.data_s3c.s3bucket + "/" + x.path + "'", alive_files)))
 )
 print(ddb.sql(query))
 
@@ -138,7 +138,7 @@ query = ("select user_id, count(*) as cnt "
          "from read_parquet([{}]) "
          "group by user_id, event "
          "order by count(user_id) desc").format(
-    ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
+    ', '.join(list(map(lambda x: "'s3://" + ice.data_s3c.s3bucket + "/" + x.path + "'", alive_files)))
 )
 print(ddb.sql(query))
 
@@ -151,7 +151,7 @@ query = ("select user_id, event, sum(cnt) as cnt "
          "from read_parquet([{}]) "
          "group by user_id, event "
          "order by sum(cnt) desc").format(
-    ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
+    ', '.join(list(map(lambda x: "'s3://" + ice.data_s3c.s3bucket + "/" + x.path + "'", alive_files)))
 )
 print(ddb.sql(query))
 
@@ -170,7 +170,7 @@ query = ("select user_id, count(*) as cnt "
          "from read_parquet([{}]) "
          "group by user_id, event "
          "order by count(user_id) desc").format(
-    ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
+    ', '.join(list(map(lambda x: "'s3://" + ice.data_s3c.s3bucket + "/" + x.path + "'", alive_files)))
 )
 print(ddb.sql(query))
 
@@ -184,7 +184,7 @@ query = ("select user_id, event, sum(cnt) as cnt "
          "from read_parquet([{}]) "
          "group by user_id, event "
          "order by sum(cnt) desc").format(
-    ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
+    ', '.join(list(map(lambda x: "'s3://" + ice.data_s3c.s3bucket + "/" + x.path + "'", alive_files)))
 )
 print(ddb.sql(query))
 

@@ -218,7 +218,7 @@ class QueryResource:
                  "from read_parquet([{}]) "
                  "group by user_id, page "
                  "order by count(user_id) desc").format(
-            ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
+            ', '.join(list(map(lambda x: "'s3://" + ice.data_s3c.s3bucket + "/" + x.path + "'", alive_files)))
         )
 
         # return the result as text
