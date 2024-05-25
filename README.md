@@ -44,12 +44,13 @@ the ClickHouse S3 function `s3('https://icedb-s3-proxy/**/*.parquet')` or DuckDB
     * [Why not Iceberg?](#why-not-iceberg)
     * [When not to use IceDB](#when-not-to-use-icedb)
   * [Tips before you dive in](#tips-before-you-dive-in)
-    * [Forcing number types](#forcing-number-types)
+    * [Forcing property types](#forcing-property-types)
     * [Insert in large batches](#insert-in-large-batches)
     * [Merge and Tombstone clean often](#merge-and-tombstone-clean-often)
     * [Large partitions, sort your data well!](#large-partitions-sort-your-data-well)
     * [Schema validation before insert](#schema-validation-before-insert)
     * [Tracking the running schema](#tracking-the-running-schema)
+    * [Separation of log and data](#separation-of-log-and-data)
   * [Usage](#usage)
     * [Partition function (`part_func`)](#partition-function-part_func)
     * [Sorting Order (`sort_order`)](#sorting-order-sort_order)
@@ -87,7 +88,7 @@ from datetime import datetime
 from time import time
 
 # create an s3 client to talk to minio
-s3c = S3Client(s3prefix="example", s3bucket="testbucket", s3region="us-east-1", s3endpoint="http://localhost:9000", 
+s3c = S3Client(s3prefix="example", s3bucket="testbucket", s3region="us-east-1", s3endpoint="http://localhost:9000",
                s3accesskey="user", s3secretkey="password")
 
 example_events = [
@@ -122,6 +123,7 @@ example_events = [
     }
 ]
 
+
 def part_func(row: dict) -> str:
     """
     Partition by user_id, date
@@ -129,6 +131,7 @@ def part_func(row: dict) -> str:
     row_time = datetime.utcfromtimestamp(row['ts'] / 1000)
     part = f"u={row['user_id']}/d={row_time.strftime('%Y-%m-%d')}"
     return part
+
 
 # Initialize the client
 ice = IceDBv3(
@@ -169,7 +172,7 @@ query = ("select user_id, count(*), (properties::JSON)->>'page_name' as page "
          "from read_parquet([{}]) "
          "group by user_id, page "
          "order by count(*) desc").format(
-    ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
+    ', '.join(list(map(lambda x: "'s3://" + ice.data_s3c.s3bucket + "/" + x.path + "'", alive_files)))
 )
 print(ddb.sql(query))
 ```
@@ -455,6 +458,12 @@ See a simple [example here](examples/verify-schema.py) on verifying the schema b
 
 IceDB will track the running schema natively. One caveat to this functionality is that if you remove a column as a 
 part of a partition rewrite and that column never returns, IceDB will not remove that from the schema.
+
+### Separation of log and data
+
+You can use the optional `log_s3_client` to use a different S3 client for log files. All instances of IceDB MUST have the same configuration in this regard.
+
+This is useful for when you may want to have the log in lower-latency time to first byte storage like S3 single zone express, but keep the data in lower cost storage like normal S3.
 
 ## Usage
 

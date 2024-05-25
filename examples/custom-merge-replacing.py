@@ -126,7 +126,7 @@ query = ("select user_id, count(*) as cnt "
          "from read_parquet([{}]) "
          "group by user_id, event "
          "order by count(user_id) desc").format(
-    ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
+    ', '.join(list(map(lambda x: "'s3://" + ice.data_s3c.s3bucket + "/" + x.path + "'", alive_files)))
 )
 print(ddb.sql(query))
 
@@ -139,7 +139,7 @@ alive_files = list(filter(lambda x: x.tombstone is None, f1))
 query = ("select user_id, arg_max(event, ts), max(ts)::INT8, arg_max(properties, ts) "
          "from read_parquet([{}]) "
          "group by user_id ").format(
-    ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
+    ', '.join(list(map(lambda x: "'s3://" + ice.data_s3c.s3bucket + "/" + x.path + "'", alive_files)))
 )
 print(ddb.sql(query))
 
@@ -159,7 +159,7 @@ query = ("select user_id, count(*) as cnt "
          "from read_parquet([{}]) "
          "group by user_id, event "
          "order by count(user_id) desc").format(
-    ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
+    ', '.join(list(map(lambda x: "'s3://" + ice.data_s3c.s3bucket + "/" + x.path + "'", alive_files)))
 )
 print(ddb.sql(query))
 
@@ -172,7 +172,7 @@ alive_files = list(filter(lambda x: x.tombstone is None, f1))
 query = ("select user_id, arg_max(event, ts), max(ts), arg_max(properties, ts) "
          "from read_parquet([{}]) "
          "group by user_id ").format(
-    ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
+    ', '.join(list(map(lambda x: "'s3://" + ice.data_s3c.s3bucket + "/" + x.path + "'", alive_files)))
 )
 print(ddb.sql(query))
 
@@ -192,7 +192,7 @@ query = ("select user_id, count(*) as cnt "
          "from read_parquet([{}]) "
          "group by user_id, event "
          "order by count(user_id) desc").format(
-    ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
+    ', '.join(list(map(lambda x: "'s3://" + ice.data_s3c.s3bucket + "/" + x.path + "'", alive_files)))
 )
 print(ddb.sql(query))
 
@@ -207,7 +207,7 @@ alive_files = list(filter(lambda x: x.tombstone is None, f1))
 query = ("select user_id, arg_max(event, ts), max(ts), arg_max(properties, ts) "
          "from read_parquet([{}]) "
          "group by user_id ").format(
-    ', '.join(list(map(lambda x: "'s3://" + ice.s3c.s3bucket + "/" + x.path + "'", alive_files)))
+    ', '.join(list(map(lambda x: "'s3://" + ice.data_s3c.s3bucket + "/" + x.path + "'", alive_files)))
 )
 print(ddb.sql(query))
 
