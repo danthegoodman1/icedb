@@ -761,8 +761,7 @@ Like deduplication, you must handle this in your queries too if you want to guar
 
 #### Aggregating Data on Merge
 
-If you are aggregating, you must include a new `_row_id`. If you are replacing this should come through choosing the
-correct row to replace.
+You can aggregate data on merge so that subsequent aggregation queries are fast (by doing less work).
 
 Example aggregation merge query:
 
