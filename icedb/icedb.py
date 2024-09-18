@@ -107,11 +107,7 @@ class IceDBv3:
         partition = '/'.join(path_parts[:-1])
         return partition
 
-    def get_schema(self, rows: list[dict]):
-        """
-        Creates one or more files in the destination folder based on the partition strategy :param rows: Rows of JSON
-        data to be inserted. Must have the expected keys of the partitioning strategy and the sorting order
-        """
+    def get_schema(self, rows: list[dict]) -> Schema:
         running_schema = Schema()
 
         # py arrow table
