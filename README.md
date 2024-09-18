@@ -56,6 +56,7 @@ the ClickHouse S3 function `s3('https://icedb-s3-proxy/**/*.parquet')` or DuckDB
     * [Sorting Order (`sort_order`)](#sorting-order-sort_order)
     * [Removing partitions (`remove_partitions`)](#removing-partitions-remove_partitions)
     * [Rewriting partitions (`rewrite_partition`)](#rewriting-partitions-rewrite_partition)
+    * [Time-travel queries](#time-travel-queries)
   * [Pre-installing DuckDB extensions](#pre-installing-duckdb-extensions)
   * [Merging](#merging)
   * [Concurrent merges](#concurrent-merges)
@@ -567,6 +568,12 @@ select *
 from _rows
 where user_id != 'user_a'
 ```
+
+### Time-travel queries
+
+Using the `IceLogIO.read_at_max_time` method, you can choose a max timestamp to read the log at. This can be used for snapshot queries, where you read the log up to some point in time.
+
+This can allow you to read previously deleted (and unmerged) data if you have not already dropped it from S3.
 
 ## Pre-installing DuckDB extensions
 
