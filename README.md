@@ -226,9 +226,10 @@ IceDB can easily insert hundreds of thousands of rows per second per instance, a
 hundreds of millions of rows per second.
 
 Performance depends on a variety of things such as query engine, network/disk, and how efficiently 
-your data is merged at query time.
+your data is merged at query time. Query performance depends on how efficiently the query engine can read Parquet.
+I've reached >100M rows/s with ClickHouse using IceDB.
 
-Running multiple single-threaded web servers will be more performant than a single multithreaded web server due to the overhead of multithreading in python web servers, as seen in the performance test differences between the local test (2M/sec on small sample rows) vs the chicago dataset (40-50k/sec with 100k batch, 80-90k/sec with 1M batch).
+Running multiple single-threaded insert web servers will be more performant than a single multithreaded web server due to the overhead of multithreading in python web servers, as seen in the performance test differences between the local test (2M/sec on small sample rows) vs the chicago dataset (40-50k/sec with 100k batch, 80-90k/sec with 1M batch).
 
 See [perf_tests](perf_tests) for examples.
 
