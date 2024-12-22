@@ -88,9 +88,30 @@ from icedb import IceDBv3, CompressionCodec
 from datetime import datetime
 from time import time
 
+# S3 configuration dictionary
+S3_CONFIG = {
+    "s3_region": "us-east-1",
+    "s3_endpoint": "http://localhost:9000",
+    "s3_access_key_id": "user",
+    "s3_secret_access_key": "password",
+    "s3_use_ssl": False,
+    "s3_url_style": "path"  # can be 'path' or 'vhost'
+}
+
+S3_BUCKET_CONFIG = {
+    "bucket": "testbucket",
+    "prefix": "example",
+}
+
 # create an s3 client to talk to minio
-s3c = S3Client(s3prefix="example", s3bucket="testbucket", s3region="us-east-1", s3endpoint="http://localhost:9000",
-               s3accesskey="user", s3secretkey="password")
+s3c = S3Client(
+    s3prefix=S3_BUCKET_CONFIG["prefix"],
+    s3bucket=S3_BUCKET_CONFIG["bucket"],
+    s3region=S3_CONFIG["s3_region"],
+    s3endpoint=S3_CONFIG["s3_endpoint"],
+    s3accesskey=S3_CONFIG["s3_access_key_id"],
+    s3secretkey=S3_CONFIG["s3_secret_access_key"]
+)
 
 example_events = [
     {
@@ -137,15 +158,15 @@ def part_func(row: dict) -> str:
 # Initialize the client
 ice = IceDBv3(
     part_func,
-    ['event', 'ts'],  # Sort by event, then timestamp of the event within the data part
-    "us-east-1",
-    "user",
-    "password",
-    "http://localhost:9000",
+    ['event', 'ts'],
+    S3_CONFIG["s3_region"],
+    S3_CONFIG["s3_access_key_id"],
+    S3_CONFIG["s3_secret_access_key"],
+    S3_CONFIG["s3_endpoint"],
     s3c,
     "dan-mbp",
-    s3_use_path=True,  # needed for local minio
-    compression_codec=CompressionCodec.ZSTD  # Let's force a higher compression level, default is SNAPPY
+    s3_use_path=S3_CONFIG["s3_url_style"] == "path",
+    compression_codec=CompressionCodec.ZSTD
 )
 
 # Insert records
@@ -161,12 +182,13 @@ alive_files = list(filter(lambda x: x.tombstone is None, file_markers))
 ddb = duckdb.connect(":memory:")
 ddb.execute("install httpfs")
 ddb.execute("load httpfs")
-ddb.execute("SET s3_region='us-east-1'")
-ddb.execute("SET s3_access_key_id='user'")
-ddb.execute("SET s3_secret_access_key='password'")
-ddb.execute("SET s3_endpoint='localhost:9000'")
-ddb.execute("SET s3_use_ssl='false'")
-ddb.execute("SET s3_url_style='path'")
+
+# Set DuckDB S3 configuration from the config dictionary
+for key, value in S3_CONFIG.items():
+    if key == "s3_endpoint":
+        # Strip protocol prefix by splitting on :// once
+        value = value.split("://", 1)[1]
+    ddb.execute(f"SET {key}='{value}'")
 
 # Query alive files
 query = ("select user_id, count(*), (properties::JSON)->>'page_name' as page "
