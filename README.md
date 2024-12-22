@@ -165,7 +165,7 @@ ice = IceDBv3(
     S3_CONFIG["s3_endpoint"],
     s3c,
     "dan-mbp",
-    s3_use_path=S3_CONFIG["s3_url_style"] == "path",
+    s3_use_path=S3_CONFIG["s3_url_style"] == "path", # path is needed for local minio
     compression_codec=CompressionCodec.ZSTD
 )
 
