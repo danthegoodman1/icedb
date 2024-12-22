@@ -60,6 +60,7 @@ class IceDBv3:
         self.sort_order = sort_order
         self.row_group_size = row_group_size
         self.path_safe_hostname = path_safe_hostname
+        print("s3 cleint", s3_client)
         self.data_s3c = s3_client
         self.custom_merge_query = custom_merge_query
         self.custom_insert_query = custom_insert_query
@@ -394,7 +395,7 @@ class IceDBv3:
                 Bucket=self.data_s3c.s3bucket,
                 Key=data_path
             )
-            deleted_log_files.append(data_path)
+            deleted_data_files.append(data_path)
 
 
 
