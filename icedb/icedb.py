@@ -297,13 +297,16 @@ class IceDBv3:
             merged_time = round(time() * 1000)
             new_file_marker = FileMarker(fullpath, merged_time, merged_file_size)
 
-            updated_markers = list(map(lambda x: FileMarker(
-                x.path,
-                x.createdMS,
-                x.fileBytes,
-                merged_time if x.path in acc_file_paths else x.tombstone),
-                                       m_file_markers))
 
+            print("acc_file_paths", acc_file_paths);
+            print("m_file_markers", list(map(lambda x: x.path, m_file_markers)));
+            updated_markers = []
+            for x in m_file_markers:
+                tombstone = merged_time if x.path in acc_file_paths else x.tombstone
+                print(f"tombstone {x.path} {tombstone} (merged_time {merged_time}) (x.path in acc_file_paths): {x.path in acc_file_paths}")
+                marker = FileMarker(x.path, x.createdMS, x.fileBytes, tombstone)
+                print(marker)
+                updated_markers.append(marker)
 
             new_tombstones = list(map(lambda x: LogTombstone(x, merged_time),
                                       merged_log_files))
@@ -352,26 +355,42 @@ class IceDBv3:
                 Bucket=self.log_s3c.s3bucket,
                 Key=file['Key']
             )
+            print(f"======tombstone_cleanup {file['Key']}======")
             jsonl = str(obj['Body'].read(), encoding="utf-8").split("\n")
+            print("\n".join(jsonl))
+            print("======")
             meta_json = json.loads(jsonl[0])
             meta = LogMetadataFromJSON(meta_json)
-
+            expired = now - min_age_ms
+            skipped_files = 0
             # Log tombstones
             if meta.tombstoneLineIndex is not None:
                 for i in range(meta.tombstoneLineIndex, meta.fileLineIndex):
                     tmb = LogTombstoneFromJSON(dict(json.loads(jsonl[i])))
-                    if tmb.createdMS <= now - min_age_ms:
+                    print(f"considering deleting log {tmb.path}: {tmb.createdMS} > {expired} ({tmb.createdMS - expired})")
+                    if tmb.createdMS <= expired:
+                        print(f"- deleting {tmb.path}")
                         log_files_to_delete[tmb.path] = True
-
+                    else:
+                        skipped_files += 1
+                        print(f"- not old enough {tmb.path}")
             # File markers
             for i in range(meta.fileLineIndex, len(jsonl)):
                 fm_json = dict(json.loads(jsonl[i]))
                 fm = FileMarkerFromJSON(fm_json)
-                if fm.createdMS <= now - min_age_ms and fm.tombstone is not None:
+                print(f"considering deleting data file {fm.path}: {fm.createdMS} > {expired} ({fm.createdMS - expired})")
+
+                if fm.createdMS <= expired and fm.tombstone is not None:
                     data_files_to_delete[fm.path] = True
                     if fm.path in data_files_to_keep:
                         del data_files_to_keep[fm.path]
+                    print(f"- deleting {fm.path}")
                 else:
+                    skipped_files += 1
+                    if fm.tombstone is None:
+                        print(f"- not tombstoned {fm.path}")
+                    else:
+                        print(f"- not old enough {fm.path}")
                     data_files_to_keep[fm.path] = fm
 
             # Accumulate schema
@@ -379,6 +398,9 @@ class IceDBv3:
             schema.accumulate(list(schema_json.keys()), list(schema_json.values()))
 
             cleaned_log_files.append(file['Key'])
+            if skipped_files > 0:
+                print(f"tomstone_cleanup cancelled for {file['Key']}: {skipped_files} files could not be deleted")
+                return [], [], []
 
         # Delete log tombstones
         for log_path in log_files_to_delete.keys():
@@ -394,7 +416,7 @@ class IceDBv3:
                 Bucket=self.data_s3c.s3bucket,
                 Key=data_path
             )
-            deleted_log_files.append(data_path)
+            deleted_data_files.append(data_path)
 
 
 

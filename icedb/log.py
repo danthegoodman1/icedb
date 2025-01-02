@@ -249,7 +249,10 @@ class IceLogIO:
                 Bucket=s3client.s3bucket,
                 Key=file
             )
+            print(f"======read_log_forward {file}======")
             jsonl = str(obj['Body'].read(), encoding="utf-8").split("\n")
+            print("\n".join(jsonl))
+            print("======")
             meta_json = json.loads(jsonl[0])
             meta = LogMetadataFromJSON(meta_json)
 
@@ -350,6 +353,9 @@ class IceLogIO:
 
         # Upload the file to S3
         file_key = "/".join([s3client.s3prefix, '_log', file_id+'.jsonl'])
+        print(f"======append {file_key}======")
+        print("\n".join(log_file_lines))
+        print("======")
         s3client.s3.put_object(
             Body=bytes('\n'.join(log_file_lines), 'utf-8'),
             Bucket=s3client.s3bucket,
