@@ -345,7 +345,7 @@ class IceDBv3:
         data_files_to_keep: dict[str, FileMarker] = {}
         schema = Schema()
 
-        cur_schema, cur_files, cur_tombstones, all_log_files = logio.read_at_max_time(self.log_s3c, round(time() * 1000))
+        cur_schema, cur_files, cur_tombstones, all_log_files = logio.read_at_max_time(self.log_s3c, now)
 
         # We only need to get merge files
         merge_log_files = list(filter(lambda x: get_log_file_info(x)[1], all_log_files))
