@@ -31,9 +31,6 @@ s3c = S3Client(
     s3secretkey=S3_CONFIG["s3_secret_access_key"]
 )
 
-# wipe everything at the start
-delete_all_s3(s3c)
-
 example_events = [
     {
         "ts": 1686176939445,
@@ -140,13 +137,15 @@ def once():
             print(f"- merged_file_markers {merged_file_markers}")
         print(f"- into: {new_file_marker.path}")
         print(f"- new log: {new_log}")
-        # else:
-        #     break;
+
     cleaned_logs, deleted_logs, deleted_data = ice.tombstone_cleanup(1_000)
     print(f"{len(cleaned_logs)} cleaned log files: {', '.join(cleaned_logs)}")
     print(f"{len(deleted_logs)} deleted log files: {', '.join(deleted_logs)}")
     print(f"{len(deleted_data)} deleted data files: {', '.join(deleted_data)}")
 
+
+# wipe everything at the start
+delete_all_s3(s3c)
 
 for i in range(30):
     try:
@@ -155,3 +154,6 @@ for i in range(30):
         print(f"Failed after {i} runs")
         raise e
     sleep(1)
+
+# wipe everything at the end if successful
+delete_all_s3(s3c)
