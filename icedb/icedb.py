@@ -358,7 +358,7 @@ class IceDBv3:
             jsonl = str(obj['Body'].read(), encoding="utf-8").split("\n")
             meta_json = json.loads(jsonl[0])
             meta = LogMetadataFromJSON(meta_json)
-            expired = now - min_age_ms  # the latest time at which a tombstone is allowed to be deleted
+            expired = now - min_age_ms  # time at which a tombstone is allowed to be deleted
             # Log tombstones
             if meta.tombstoneLineIndex is not None:
                 for i in range(meta.tombstoneLineIndex, meta.fileLineIndex):
