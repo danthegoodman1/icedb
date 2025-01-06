@@ -179,6 +179,13 @@ print(ddb.sql(query))
 print("============= merging =============")
 # here we reduce the rows to a single latest row
 merged_log, new_file, partition, merged_files, meta = ice.merge()
+merged_log, new_file, partition, merged_files, meta = ice.merge()
+# redundant merges do nothing
+merged_log, new_file, partition, merged_files, meta = ice.merge()
+merged_log, new_file, partition, merged_files, meta = ice.merge()
+merged_log, new_file, partition, merged_files, meta = ice.merge()
+merged_log, new_file, partition, merged_files, meta = ice.merge()
+merged_log, new_file, partition, merged_files, meta = ice.merge()
 print(f"merged {len(merged_files)} data files from partition {partition}")
 
 print("============= check number of raw rows in data =============")
