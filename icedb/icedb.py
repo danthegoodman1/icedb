@@ -416,7 +416,7 @@ class IceDBv3:
             1,
             schema,
             list(data_files_to_keep.values()),
-            list(log_files_to_keep.values()),
+            list(log_files_to_keep.values()),  # kept because we must preserve tombstones for `min_age`
             merged=True,
             timestamp=round(time()*1000)
         )
