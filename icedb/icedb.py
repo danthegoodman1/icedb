@@ -340,34 +340,46 @@ class IceDBv3:
         now = round(time() * 1000)
 
         log_files_to_delete: dict[str, bool] = {}
+        log_files_to_keep: dict[str, LogTombstone] = {}
         data_files_to_delete: dict[str, bool] = {}
         data_files_to_keep: dict[str, FileMarker] = {}
         schema = Schema()
 
-        current_log_files = logio.get_current_log_files(self.log_s3c)
+        cur_schema, cur_files, cur_tombstones, all_log_files = logio.read_at_max_time(self.log_s3c, now)
+
         # We only need to get merge files
-        merge_log_files = list(filter(lambda x: get_log_file_info(x['Key'])[1], current_log_files))
-        for file in merge_log_files:
+        merge_log_files = list(filter(lambda x: get_log_file_info(x)[1], all_log_files))
+        
+        for log_file in merge_log_files:
             obj = self.log_s3c.s3.get_object(
                 Bucket=self.log_s3c.s3bucket,
-                Key=file['Key']
+                Key=log_file
             )
             jsonl = str(obj['Body'].read(), encoding="utf-8").split("\n")
             meta_json = json.loads(jsonl[0])
             meta = LogMetadataFromJSON(meta_json)
-
+            expired = now - min_age_ms  # time at which a tombstone is allowed to be deleted
             # Log tombstones
             if meta.tombstoneLineIndex is not None:
                 for i in range(meta.tombstoneLineIndex, meta.fileLineIndex):
                     tmb = LogTombstoneFromJSON(dict(json.loads(jsonl[i])))
-                    if tmb.createdMS <= now - min_age_ms:
+                    if tmb.createdMS <= expired:
                         log_files_to_delete[tmb.path] = True
-
+                    else:
+                        log_files_to_keep[tmb.path] = tmb
             # File markers
             for i in range(meta.fileLineIndex, len(jsonl)):
                 fm_json = dict(json.loads(jsonl[i]))
                 fm = FileMarkerFromJSON(fm_json)
-                if fm.createdMS <= now - min_age_ms and fm.tombstone is not None:
+
+                tombstone = fm.tombstone
+                if not tombstone:
+                    # find fm.path in cur_files
+                    for cf in cur_files:
+                        if cf.path == fm.path:
+                            tombstone = cf.tombstone
+                            break
+                if tombstone is not None and tombstone <= expired:
                     data_files_to_delete[fm.path] = True
                     if fm.path in data_files_to_keep:
                         del data_files_to_keep[fm.path]
@@ -378,7 +390,7 @@ class IceDBv3:
             schema_json = dict(json.loads(jsonl[meta.schemaLineIndex]))
             schema.accumulate(list(schema_json.keys()), list(schema_json.values()))
 
-            cleaned_log_files.append(file['Key'])
+            cleaned_log_files.append(log_file)
 
         # Delete log tombstones
         for log_path in log_files_to_delete.keys():
@@ -394,7 +406,7 @@ class IceDBv3:
                 Bucket=self.data_s3c.s3bucket,
                 Key=data_path
             )
-            deleted_log_files.append(data_path)
+            deleted_data_files.append(data_path)
 
 
 
@@ -404,7 +416,7 @@ class IceDBv3:
             1,
             schema,
             list(data_files_to_keep.values()),
-            None,
+            list(log_files_to_keep.values()),  # kept because we must preserve tombstones for `min_age`
             merged=True,
             timestamp=round(time()*1000)
         )
