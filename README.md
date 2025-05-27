@@ -735,8 +735,8 @@ order by event, time
 
 #### De-duplicating Data on Merge
 
-By default, no data is attempted to be de-duplicated. You can provide deterministic row IDs (or pre-defined) and 
-deduplicate during merge.
+By default, no data is attempted to be de-duplicated. You can provide deterministic row IDs and 
+deduplicate on them during merge.
 
 For example, if you wanted merges to take any (but only a single) value for a given `_row_id`, you might use:
 
