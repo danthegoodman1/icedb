@@ -750,8 +750,7 @@ from source_files
 group by _row_id
 ```
 
-Note that this will only deduplicate for a single merged parquet file, to guarantee single rows you much still employ
-deduplication in your analytical queries.
+Note that this will only deduplicate for a single merge, you must also do this in your final query to deduplicate across parquet files! This is like using -Merge functions in your final ClickHouse queries on an AggregatingMergeTree table.
 
 #### Replacing Data on Merge
 
