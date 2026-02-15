@@ -8,7 +8,6 @@ from time import time, sleep
 import json
 from enum import Enum
 import pyarrow as pa
-from copy import deepcopy
 import concurrent.futures
 
 
