@@ -735,8 +735,8 @@ order by event, time
 
 #### De-duplicating Data on Merge
 
-By default, no data is attempted to be de-duplicated. You can provider deterministic row IDs (or pre-defined) and 
-deduplicate during merge.
+By default, no data is attempted to be de-duplicated. You can provide deterministic row IDs and 
+deduplicate on them during merge.
 
 For example, if you wanted merges to take any (but only a single) value for a given `_row_id`, you might use:
 
@@ -750,8 +750,7 @@ from source_files
 group by _row_id
 ```
 
-Note that this will only deduplicate for a single merged parquet file, to guarantee single rows you much still employ
-deduplication in your analytical queries.
+Note that this will only deduplicate for a single merge, you must also do this in your final query to deduplicate across parquet files! This is like using -Merge functions in your final ClickHouse queries on an AggregatingMergeTree table.
 
 #### Replacing Data on Merge
 
