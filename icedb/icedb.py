@@ -348,7 +348,7 @@ class IceDBv3:
 
         # We only need to get merge files
         merge_log_files = list(filter(lambda x: get_log_file_info(x)[1], all_log_files))
-        
+
         for log_file in merge_log_files:
             obj = self.log_s3c.s3.get_object(
                 Bucket=self.log_s3c.s3bucket,
